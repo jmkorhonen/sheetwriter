@@ -75,6 +75,25 @@ const Exporter = (() => {
     return parts.join('\n\n') + '\n';
   }
 
+  /** The headings toMarkdown emits, in order: {sheetTitle: si} or {si, i}. Lets the Read view tag rendered headings with their rows. */
+  function headingOrder(doc, opts = {}) {
+    const column = opts.column || doc.mainColumn;
+    const chapters = doc.sheets.map((s, i) => ({ s, i })).filter(x => x.s.kind === 'chapter');
+    const selected = opts.scope === 'all' || opts.scope == null ? chapters : chapters.filter(x => x.i === +opts.scope);
+    const out = [];
+    for (const { s, i } of selected) {
+      if (opts.sheetTitles) out.push({ sheetTitle: i });
+      s.rows.forEach((r, k) => {
+        const kind = Model.normKind(r.kind);
+        if (kind === 'x' || !SheetNumbering.headingLevel(kind)) return;
+        const text = String(r[column] || '').trim();
+        const htext = (text || String(r[doc.mainColumn] || '').trim()).replace(/^#{1,6}[ \t]+/, '');
+        if (htext) out.push({ si: i, i: k });
+      });
+    }
+    return out;
+  }
+
   function sideBlocks(values, side) {
     if (!side || !side.column || !values.length) return [];
     const label = side.column;
@@ -83,6 +102,6 @@ const Exporter = (() => {
     return ['> **' + label + ':** ' + values.map(v => v.replace(/\n/g, ' ')).join('\n> ')];
   }
 
-  return { toMarkdown };
+  return { toMarkdown, headingOrder };
 })();
 if (typeof module !== 'undefined') module.exports = Exporter;

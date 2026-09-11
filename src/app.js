@@ -1,12 +1,12 @@
 /* SheetWriter — application wiring: state, undo, file I/O, keyboard, events. */
 (() => {
   const $ = s => document.querySelector(s);
-  const viewRoot = $('#view'), tabsRoot = $('#tabs'), statusEl = $('#status');
+  const viewRoot = $('#view'), tabsRoot = $('#tabs'), statusEl = $('#status'), tocRoot = $('#toc');
   const NO_COLLAPSE = new Set();
 
   // Editor preferences live in this browser, not in the workbook.
   const PREF_KEY = 'sheetwriter.prefs';
-  const prefs = Object.assign({ enterMode: 'row', indentTrigger: '   ', showCounts: true }, (() => { try { return JSON.parse(localStorage.getItem(PREF_KEY) || '{}'); } catch (e) { return {}; } })());
+  const prefs = Object.assign({ enterMode: 'row', indentTrigger: '   ', showCounts: true, tocOpen: false, tocScope: 'sheet' }, (() => { try { return JSON.parse(localStorage.getItem(PREF_KEY) || '{}'); } catch (e) { return {}; } })());
   function savePrefs() { try { localStorage.setItem(PREF_KEY, JSON.stringify(prefs)); } catch (e) { /* ignore */ } }
 
   const state = {
@@ -64,10 +64,51 @@
       document.querySelectorAll('#toolbar .views button').forEach(b => b.classList.toggle('active', b.dataset.view === state.view));
       $('#btn-undo').disabled = !history.undo.length;
       $('#btn-redo').disabled = !history.redo.length;
+      document.body.classList.toggle('toc-open', !!prefs.tocOpen);
+      $('#btn-toc').classList.toggle('active', !!prefs.tocOpen);
+      renderToc();
       renderStatus();
       applyFocus();
     } finally { rendering = false; }
   }
+  function currentHeading() {
+    const f = state.lastFocus;
+    if (!isChapter() || !f || f.i == null || !sheet().rows[f.i]) return null;
+    const h = Model.headingFor(sheet().rows, f.i);
+    return h == null ? null : { si: state.si, i: h };
+  }
+  function renderToc() {
+    if (!prefs.tocOpen) { tocRoot.innerHTML = ''; return; }
+    Views.renderToc(tocRoot, { ...ctx(), tocScope: prefs.tocScope, current: currentHeading() });
+  }
+  /** Jump to a row from the table of contents, in whichever view is active. */
+  function goToRow(si, i) {
+    const s = state.doc.sheets[si];
+    if (!s || s.kind !== 'chapter' || !s.rows[i]) return;
+    state.si = si;
+    const rows = s.rows;
+    if (state.view === 'draft') rows.forEach((r, j) => { if (j < i && state.collapsed.has(r._id) && Model.sectionEnd(rows, j) > i) state.collapsed.delete(r._id); });
+    if (state.view === 'read') {
+      state.lastFocus = { i, col: state.doc.mainColumn, caret: 0 };
+      render();
+      const h = viewRoot.querySelector(`article.read [data-si="${si}"][data-i="${i}"]`);
+      if (h) h.scrollIntoView({ block: 'start' }); else viewRoot.scrollTop = 0;
+      return;
+    }
+    state.focus = { i, col: state.doc.mainColumn, caret: 'end', block: 'start' };
+    state.lastFocus = { i, col: state.doc.mainColumn, caret: 0 };
+    render();
+  }
+  tocRoot.addEventListener('click', e => {
+    const item = e.target.closest('.toc-item');
+    if (item) { goToRow(+item.dataset.si, +item.dataset.i); return; }
+    const sh = e.target.closest('.toc-sheet');
+    if (sh) { state.si = +sh.dataset.si; state.lastFocus = null; render(); return; }
+    if (e.target.closest('#toc-close')) { prefs.tocOpen = false; savePrefs(); render(); }
+  });
+  tocRoot.addEventListener('change', e => {
+    if (e.target.id === 'toc-scope') { prefs.tocScope = e.target.value; savePrefs(); renderToc(); }
+  });
   const fmt = n => n.toLocaleString('en-US').replace(/,/g, ' ');
   function docTitle() { return state.doc.settings.title || state.fileName.replace(/\.xlsx$/i, ''); }
   function renderStatus() {
@@ -105,7 +146,7 @@
     t.focus();
     const pos = f.caret === 'end' || f.caret == null ? t.value.length : Math.min(f.caret, t.value.length);
     try { t.setSelectionRange(pos, pos); } catch (e) { /* ignore */ }
-    holder.scrollIntoView({ block: 'nearest' });
+    holder.scrollIntoView({ block: f.block || 'nearest' });
   }
   function focusRow(i, col, caret) { state.focus = { i, col: col || state.doc.mainColumn, caret }; applyFocus(); }
 
@@ -208,6 +249,7 @@
     const mw = t.closest('.mainwrap');
     if (mw) { mw.classList.add('editing'); Views.autosize(t); }
     renderStatus();
+    if (prefs.tocOpen) Views.updateTocCurrent(tocRoot, currentHeading());
   });
   viewRoot.addEventListener('focusout', e => {
     const t = e.target;
@@ -583,6 +625,7 @@
   $('#btn-export').onclick = () => openExport();
   $('#btn-settings').onclick = () => openSettings();
   $('#btn-help').onclick = () => $('#dlg-help').showModal();
+  $('#btn-toc').onclick = () => { prefs.tocOpen = !prefs.tocOpen; savePrefs(); render(); };
   $('#btn-collapse').onclick = () => collapseAll(true);
   $('#btn-expand').onclick = () => collapseAll(false);
   $('#chk-side').onchange = e => { state.showSide = e.target.checked; render(); };

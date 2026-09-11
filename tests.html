@@ -117,6 +117,28 @@ test('model: section counts follow the block structure', () => {
   ok(!Model.userColumns(doc, s).includes('words'), 'computed columns are system columns');
   doc.settings.trackCounts = false; Model.addColumn(doc, 0, 'words'); ok(Model.userColumns(doc, s).includes('words'), 'plain column when tracking is off');
 });
+test('model: table of contents entries and headingFor', () => {
+  const doc = sampleDoc();
+  const all = Model.tocEntries(doc, null);
+  eq(all.map(g => g.name), ['Intro', 'Body']);
+  eq(all[0].entries.map(e => [e.number, e.level, e.text, e.words]), [['1', 1, 'Why rows', 22]]);
+  eq(all[1].entries.map(e => [e.number, e.level, e.text]), [['1.6', 2, 'Skipped level']]);
+  eq(Model.tocEntries(doc, 1).length, 1);
+  doc.sheets[0].rows[0].text = '# Hashed'; eq(Model.tocEntries(doc, 0)[0].entries[0].text, 'Hashed', 'leading marker stripped');
+  const r = rows('h1', 'p', 'h2', 'p', 'p', 'h1', 'p');
+  eq([0, 1, 2, 4, 5, 6].map(i => Model.headingFor(r, i)), [0, 0, 2, 2, 5, 5]);
+  eq(Model.headingFor(rows('p', 'h1'), 0), null);
+});
+test('export: headingOrder matches the headings toMarkdown emits', () => {
+  const doc = sampleDoc();
+  const opts = { scope: 'all', sheetTitles: true };
+  const md = Exporter.toMarkdown(doc, opts);
+  const emitted = md.split('\n').filter(l => /^#{1,6} /.test(l)).length;
+  const order = Exporter.headingOrder(doc, opts);
+  eq(order.length, emitted);
+  eq(order, [{ sheetTitle: 0 }, { si: 0, i: 0 }, { sheetTitle: 1 }, { si: 1, i: 0 }]);
+  eq(Exporter.headingOrder(doc, { scope: 1 }), [{ si: 1, i: 0 }]);
+});
 test('model: counted columns', () => {
   const doc = sampleDoc();
   eq(Model.sheetCounts(doc, doc.sheets[0]).words, 22);

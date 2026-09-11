@@ -33,7 +33,32 @@ a { color: var(--accent); }
 #dirty-dot.on { background: #e8a317; box-shadow: 0 0 0 3px #fbedcc; }
 
 /* ---- layout ---- */
-#view { flex: 1; overflow: auto; padding: 10px 0 40vh; }
+#workspace { flex: 1; display: flex; min-height: 0; }
+#view { flex: 1; min-width: 0; overflow: auto; padding: 10px 0 40vh; }
+#toc { display: none; width: 290px; flex: none; flex-direction: column; border-right: 1px solid var(--line); background: var(--paper); overflow: auto; }
+body.toc-open #toc { display: flex; }
+#toolbar #btn-toc.active { background: var(--accent-soft); border-color: #c9d8f5; color: var(--accent); }
+.toc-head { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--paper); z-index: 1; }
+.toc-title { font-weight: 600; flex: 1; }
+.toc-head select { font: inherit; font-size: 12px; }
+#toc-close { border: none; background: none; cursor: pointer; color: var(--muted); font-size: 18px; line-height: 1; padding: 0 4px; }
+#toc-close:hover { color: var(--ink); }
+.toc-list { padding: 4px 0 20px; }
+.toc-sheet { display: block; width: 100%; text-align: left; border: none; background: #f2f1ee; padding: 4px 10px; font: inherit; font-weight: 600; font-size: 12.5px; cursor: pointer; margin-top: 6px; color: #444; }
+.toc-sheet:hover { background: var(--accent-soft); }
+.toc-sheet.active { color: var(--accent); }
+.toc-item { display: flex; gap: 6px; width: 100%; text-align: left; border: none; background: none; padding: 3px 8px; cursor: pointer; font: inherit; font-size: 13px; align-items: baseline; border-left: 3px solid transparent; color: var(--ink); }
+.toc-item:hover { background: var(--accent-soft); }
+.toc-item.current { border-left-color: var(--accent); background: #f4f7fd; }
+.toc-item .toc-num { font-family: var(--mono); font-size: 11px; color: var(--muted); flex: none; }
+.toc-item .toc-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.toc-item .toc-count { font-size: 10.5px; color: #a09d97; flex: none; }
+.toc-item.level-1 { padding-left: 8px; font-weight: 600; }
+.toc-item.level-2 { padding-left: 22px; }
+.toc-item.level-3 { padding-left: 36px; }
+.toc-item.level-4 { padding-left: 50px; font-size: 12.5px; }
+.toc-item.level-5, .toc-item.level-6 { padding-left: 64px; font-size: 12px; }
+.toc-empty { padding: 8px 12px; font-size: 12.5px; }
 #view.view-grid { overflow: hidden; padding: 0; display: flex; flex-direction: column; }
 #view.view-grid .scroll { flex: 1; overflow: auto; padding: 0; }
 #tabs { display: flex; gap: 2px; padding: 4px 8px 0; background: var(--paper); border-top: 1px solid var(--line); overflow-x: auto; }

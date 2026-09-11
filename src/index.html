@@ -21,6 +21,9 @@
     <button id="btn-undo" title="Undo (Ctrl+Z)">↶ Undo</button>
     <button id="btn-redo" title="Redo (Ctrl+Y)">↷ Redo</button>
   </div>
+  <div class="group">
+    <button id="btn-toc" title="Table of contents: headings of this sheet or of all sheets, click to jump">☰ Contents</button>
+  </div>
   <div class="group views">
     <button data-view="draft" class="active" title="Cards, one per row">Draft</button>
     <button data-view="grid" title="All columns as a table">Grid</button>
@@ -40,7 +43,10 @@
   <div><span id="dirty-dot" title="All changes saved"></span><span id="doc-title">untitled</span></div>
 </header>
 
-<main id="view" class="view-draft"></main>
+<div id="workspace">
+  <aside id="toc" aria-label="Table of contents"></aside>
+  <main id="view" class="view-draft"></main>
+</div>
 <nav id="tabs"></nav>
 <footer id="status"></footer>
 
@@ -150,6 +156,8 @@
       <tr><td>Ctrl+E</td><td>Export Markdown</td></tr>
       <tr><td>Ctrl+PageUp / PageDown</td><td>Previous / next sheet</td></tr>
     </table>
+    <h3>Table of contents</h3>
+    <p>The Contents button opens a pane listing the headings of this sheet or of all sheets, with numbers and section word counts. Click a heading to jump to it in Draft, Grid or Read view; collapsed sections open on the way. The heading you are working under is highlighted.</p>
     <h3>Grid and tabs</h3>
     <p>Click a column name to rename it. Double-click a sheet tab to rename it. Drag rows by the ⋮⋮ handle, drag tabs to reorder chapters.</p>
     <h3>Files</h3>

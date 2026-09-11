@@ -209,6 +209,30 @@ const Model = (() => {
     });
   }
   function userColumns(doc, sheet) { return sheet.columns.filter(c => !isSystem(doc, c)); }
+  /** Table of contents: one group per chapter sheet (or only sheet `only`), with its heading rows. */
+  function tocEntries(doc, only) {
+    const out = [];
+    doc.sheets.forEach((s, si) => {
+      if (s.kind !== 'chapter' || (only != null && si !== only)) return;
+      const num = numbering(doc, si);
+      const sec = sectionCounts(doc, s);
+      const entries = [];
+      s.rows.forEach((r, i) => {
+        if (!SheetNumbering.headingLevel(r.kind)) return;
+        const text = String(r[doc.mainColumn] || '').replace(/^#{1,6}[ \t]+/, '').trim();
+        entries.push({ si, i, level: num.levels[i], number: num.numbers[i], text: text || '(untitled)', words: sec[i] ? sec[i].words : rowCounts(doc, s, r).words });
+      });
+      out.push({ si, name: s.name, entries });
+    });
+    return out;
+  }
+  /** Index of the heading whose section contains row i (i itself if it is a heading), or null. */
+  function headingFor(rows, i) {
+    for (let j = i; j >= 0; j--) {
+      if (SheetNumbering.headingLevel(rows[j].kind) && (j === i || sectionEnd(rows, j) > i)) return j;
+    }
+    return null;
+  }
   function sideColumns(doc, sheet) { return userColumns(doc, sheet).filter(c => c !== doc.mainColumn); }
   function rowIsEmpty(doc, sheet, row) { return userColumns(doc, sheet).every(c => !String(row[c] || '').trim()); }
   function wordCount(text) {
@@ -453,7 +477,7 @@ const Model = (() => {
     RESERVED, META, COMPUTED, KINDS, DEFAULT_COLUMNS, normKind, isHeading, indentOf, emptyRow, newChapter, newDoc, ensureIds, newId,
     detectKindPrefix, detectIndentPrefix, stamp, isMeta, isComputed, isSystem, touch, ensureMetaColumns,
     sectionEnd, isCollapsible, blockOf, moveBlock, siblingMoveTarget,
-    chapterSheets, chapterIndex, numbering, countColumns, rowCounts, sectionCounts, userColumns, sideColumns, rowIsEmpty,
+    chapterSheets, chapterIndex, numbering, countColumns, rowCounts, sectionCounts, userColumns, sideColumns, rowIsEmpty, tocEntries, headingFor,
     wordCount, charCount, sheetCounts, docCounts, sheetWords, docWords, safeFileName,
     addRow, deleteRow, moveRow, duplicateRow, splitRow, mergeRow, setCell, setIndent, shiftIndent, cycleKind, shiftKind,
     validColumnName, addColumn, renameColumn, deleteColumn, moveColumn, setMainColumn,

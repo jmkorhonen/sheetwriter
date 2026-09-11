@@ -279,16 +279,56 @@ const Views = (() => {
       el('option', { value: 'lists', selected: ctx.readIndented === 'lists' }, 'nested lists'));
     bar.append(el('label', {}, 'Column ', colSel), el('label', {}, 'Scope ', scope), el('label', {}, 'Numbering ', numSel), el('label', {}, 'Indented rows as ', indSel));
     root.appendChild(bar);
-    const md = Exporter.toMarkdown(doc, {
+    const opts = {
       column: ctx.readColumn || doc.mainColumn,
       scope: ctx.readScope === 'all' ? 'all' : si,
       numbering: ctx.readNumbering || false,
       indented: ctx.readIndented || 'paragraphs',
       sheetTitles: ctx.readScope === 'all' && doc.settings.numbering === 'per-sheet' && Model.chapterSheets(doc).length > 1,
-    });
-    const art = el('article', { class: 'read', html: MD.render(md) });
+    };
+    const art = el('article', { class: 'read', html: MD.render(Exporter.toMarkdown(doc, opts)) });
     if (ctx.readScope !== 'all' && sheet && sheet.kind !== 'chapter') art.innerHTML = '<p class="muted">Data sheet: nothing to read here.</p>';
+    // Tag rendered headings with their rows so the table of contents can scroll to them.
+    const order = Exporter.headingOrder(doc, opts);
+    const hs = art.querySelectorAll('h1, h2, h3, h4, h5, h6');
+    if (hs.length === order.length) hs.forEach((h, k) => { const o = order[k]; if (o.si != null) { h.dataset.si = o.si; h.dataset.i = o.i; } else h.dataset.sheet = o.sheetTitle; });
     root.appendChild(art);
+  }
+
+  // ---------- Table of contents ----------
+  function renderToc(root, ctx) {
+    const { doc, si } = ctx;
+    root.innerHTML = '';
+    const head = el('div', { class: 'toc-head' },
+      el('span', { class: 'toc-title' }, 'Contents'),
+      el('select', { id: 'toc-scope', title: 'Which sheets to list' },
+        el('option', { value: 'sheet', selected: ctx.tocScope !== 'all' }, 'This sheet'),
+        el('option', { value: 'all', selected: ctx.tocScope === 'all' }, 'All sheets')),
+      el('button', { type: 'button', id: 'toc-close', title: 'Close the table of contents' }, '×'));
+    root.appendChild(head);
+    const list = el('div', { class: 'toc-list' });
+    const groups = Model.tocEntries(doc, ctx.tocScope === 'all' ? null : si);
+    let any = false;
+    for (const g of groups) {
+      if (ctx.tocScope === 'all') list.appendChild(el('button', { type: 'button', class: 'toc-sheet' + (g.si === si ? ' active' : ''), 'data-si': g.si, title: 'Open this sheet' }, g.name));
+      for (const e of g.entries) {
+        any = true;
+        const cur = ctx.current && ctx.current.si === e.si && ctx.current.i === e.i;
+        list.appendChild(el('button', { type: 'button', class: 'toc-item level-' + Math.min(e.level, 6) + (cur ? ' current' : ''), 'data-si': e.si, 'data-i': e.i, title: e.text },
+          el('span', { class: 'toc-num' }, e.number),
+          el('span', { class: 'toc-text' }, e.text),
+          ctx.showCounts ? el('span', { class: 'toc-count' }, fmt(e.words) + ' w') : null));
+      }
+    }
+    if (!any) list.appendChild(el('p', { class: 'muted toc-empty' }, ctx.tocScope === 'all' ? 'No headings yet.' : 'No headings in this sheet yet. Type "# " at the start of a row to make one.'));
+    root.appendChild(list);
+    const cur = list.querySelector('.current');
+    if (cur) cur.scrollIntoView({ block: 'nearest' });
+  }
+  function updateTocCurrent(root, current) {
+    root.querySelectorAll('.toc-item').forEach(b => b.classList.toggle('current', !!current && +b.dataset.si === current.si && +b.dataset.i === current.i));
+    const c = root.querySelector('.toc-item.current');
+    if (c) c.scrollIntoView({ block: 'nearest' });
   }
 
   // ---------- Tabs ----------
@@ -315,5 +355,5 @@ const Views = (() => {
     if (edit) { edit.focus(); edit.select(); }
   }
 
-  return { el, autosize, autosizeAll, visibleIndexes, renderDraft, refreshCard, refreshMeta, renderGrid, applyFreeze, renderRead, renderTabs };
+  return { el, autosize, autosizeAll, visibleIndexes, renderDraft, refreshCard, refreshMeta, renderGrid, applyFreeze, renderRead, renderToc, updateTocCurrent, renderTabs };
 })();
