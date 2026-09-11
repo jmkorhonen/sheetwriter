@@ -457,6 +457,28 @@ const Model = (() => {
     doc.sheets.splice(to, 0, s);
     return to;
   }
+  /** Insert imported rows ({kind, indent, text, side}) into sheet si at `at` (default: end). Creates side columns as needed.
+   *  With replace=true the sheet's rows are replaced. Returns the index of the first inserted row. */
+  function importRows(doc, si, imported, { at, replace } = {}) {
+    const s = doc.sheets[si];
+    if (!s || s.kind !== 'chapter') return null;
+    const cols = new Set();
+    imported.forEach(r => Object.keys(r.side || {}).forEach(c => cols.add(c)));
+    for (const c of cols) if (!s.columns.some(x => x.toLowerCase() === c.toLowerCase())) addColumnTo(s, c);
+    const colFor = c => s.columns.find(x => x.toLowerCase() === c.toLowerCase());
+    const rows = imported.map(r => {
+      const row = emptyRow(s.columns, normKind(r.kind), isHeading(r.kind) ? 0 : (parseInt(r.indent, 10) || 0));
+      row[doc.mainColumn] = r.text || '';
+      for (const [c, v] of Object.entries(r.side || {})) row[colFor(c)] = v;
+      touch(doc, s, row);
+      return row;
+    });
+    if (replace) { s.rows = rows.length ? rows : [emptyRow(s.columns)]; return 0; }
+    if (s.rows.length === 1 && rowIsEmpty(doc, s, s.rows[0])) { s.rows.length = 0; at = 0; }
+    if (at == null || at > s.rows.length) at = s.rows.length;
+    s.rows.splice(at, 0, ...rows);
+    return at;
+  }
   /** Move rows (by index) from sheet si to the end (or `at`) of sheet ti. Returns new index of first moved row. */
   function moveRowsToSheet(doc, si, idxs, ti, at) {
     const src = doc.sheets[si], dst = doc.sheets[ti];
@@ -481,7 +503,7 @@ const Model = (() => {
     wordCount, charCount, sheetCounts, docCounts, sheetWords, docWords, safeFileName,
     addRow, deleteRow, moveRow, duplicateRow, splitRow, mergeRow, setCell, setIndent, shiftIndent, cycleKind, shiftKind,
     validColumnName, addColumn, renameColumn, deleteColumn, moveColumn, setMainColumn,
-    addSheet, renameSheet, deleteSheet, moveSheet, moveRowsToSheet, uniqueSheetName,
+    addSheet, renameSheet, deleteSheet, moveSheet, moveRowsToSheet, uniqueSheetName, importRows,
   };
 })();
 if (typeof module !== 'undefined') module.exports = Model;

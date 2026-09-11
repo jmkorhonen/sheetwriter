@@ -20,6 +20,7 @@
 <script src="src/md.js"></script>
 <script src="src/model.js"></script>
 <script src="src/exporter.js"></script>
+<script src="src/importer.js"></script>
 <script src="src/xlsxio.js"></script>
 <script>
 const tests = [];
@@ -236,6 +237,66 @@ test('export: by column with side blockquote and comment', () => {
   eq(md2, '# Why rows\n\ncheck\n\n-5 % growth\n');
   const md3 = Exporter.toMarkdown(sampleDoc(), { scope: 0, sheetTitles: false, side: { column: 'notes', mode: 'comment' } });
   ok(md3.includes('<!-- notes: check -->'), md3);
+});
+
+// ---- import ----
+const flat = rows => rows.map(r => [r.kind, r.indent, r.text]);
+test('import: headings, paragraphs, soft and hard breaks', () => {
+  const md = '# Title\n\nFirst line\nsecond line.\n\nHard  \nbreak here.\n\n##### Deep\n\nEnd.';
+  const r = Importer.parse(md);
+  eq(flat(r.rows), [['h1', '', 'Title'], ['p', '', 'First line second line.'], ['p', '', 'Hard\nbreak here.'], ['h4', '', 'Deep'], ['p', '', 'End.']]);
+  eq(r.warnings.length, 1); eq(r.stats, { rows: 5, headings: 2 });
+});
+test('import: lists hang under a paragraph and nest by depth', () => {
+  const md = 'Intro para.\n\n- one\n- two\n  - two a\n  - two b\n- three\n\n## H\n\n1. first\n2. second\n';
+  eq(flat(Importer.parse(md).rows), [['p', '', 'Intro para.'], ['p', '1', 'one'], ['p', '1', 'two'], ['p', '2', 'two a'], ['p', '2', 'two b'], ['p', '1', 'three'], ['h2', '', 'H'], ['p', '', 'first'], ['p', '', 'second']]);
+});
+test('import: side columns from blockquotes and comments, other comments become x rows', () => {
+  const md = 'Claim one.\n\n> **sources:** Smith 2020\n> Jones 2021\n\n<!-- notes: check this -->\n\n<!-- todo later -->\n\n> A real quote.\n';
+  const r = Importer.parse(md);
+  eq(r.rows[0].side, { sources: 'Smith 2020\nJones 2021', notes: 'check this' });
+  eq(r.columns.sort(), ['notes', 'sources']);
+  eq(flat(r.rows).slice(1), [['x', '', 'todo later'], ['p', '', '> A real quote.']]);
+});
+test('import: sentences with abbreviations, initials, decimals and brackets', () => {
+  const s = Importer.splitSentences('Costs rose 3.5 % (see Fig. 2). This is, e.g., true. Dr. J. Smith agreed! Was it? Yes (it was. Really). Esim. näin. Loppu.');
+  eq(s, ['Costs rose 3.5 % (see Fig. 2).', 'This is, e.g., true.', 'Dr. J. Smith agreed!', 'Was it?', 'Yes (it was. Really).', 'Esim. näin.', 'Loppu.']);
+  const r = Importer.parse('One. Two here.\n\nThree.', { granularity: 'sentences' });
+  eq(flat(r.rows), [['p', '', 'One.'], ['s', '', 'Two here.'], ['p', '', 'Three.']]);
+});
+test('import: lines mode and semantic-line detection', () => {
+  const md = 'This is the first claim.\nIt is followed by a second one.\nAnd then a third, ending here.\n\nA new paragraph starts.\nWith another line.\n';
+  const info = Importer.analyze(md);
+  eq(info.semanticLines, true);
+  eq(flat(Importer.parse(md, { granularity: 'lines' }).rows), [['p', '', 'This is the first claim.'], ['s', '', 'It is followed by a second one.'], ['s', '', 'And then a third, ending here.'], ['p', '', 'A new paragraph starts.'], ['s', '', 'With another line.']]);
+  const wrapped = 'This paragraph was wrapped by an editor at a fixed\nwidth so its lines break in the middle of\nsentences rather than at their ends and the\nlast line is short.';
+  eq(Importer.analyze(wrapped).semanticLines, false);
+});
+test('import: front matter, numbered headings stripped automatically', () => {
+  const md = '---\ntitle: My Draft\nauthor: Me\n---\n# 1 Intro\n\n1.1 First para.\n\n## 1.1 Sub\n\n1.1.1 Text.\n';
+  const r = Importer.parse(md);
+  eq(r.settings, { title: 'My Draft', author: 'Me' }); eq(r.info.numbered, true);
+  eq(flat(r.rows), [['h1', '', 'Intro'], ['p', '', 'First para.'], ['h2', '', 'Sub'], ['p', '', 'Text.']]);
+  eq(Importer.analyze(md).title, 'My Draft');
+  eq(flat(Importer.parse(md, { stripNumbers: false }).rows)[0], ['h1', '', '1 Intro']);
+});
+test('import: export → import round trip (lists mode, side blockquotes)', () => {
+  const doc = sampleDoc(); const s = doc.sheets[0];
+  s.rows[4].indent = '1'; s.rows[5].indent = '2';
+  const md = Exporter.toMarkdown(doc, { scope: 0, sheetTitles: false, indented: 'lists', side: { column: 'sources', mode: 'quote' } });
+  const r = Importer.parse(md);
+  const back = flat(r.rows);
+  eq(back, [['h1', '', 'Why rows'], ['p', '', 'First argument with **bold**. Second sentence of the same paragraph.'], ['p', '1', 'Ääkköset ja ö toimivat.'], ['p', '2', '=SUM(A1) is text, not a formula']]);
+  eq(r.rows[1].side, { sources: 'Smith 2020\nJones 2021' });
+});
+test('model: importRows creates side columns, appends or replaces', () => {
+  const doc = sampleDoc();
+  const imported = [{ kind: 'h2', indent: '', text: 'New', side: {} }, { kind: 'p', indent: '1', text: 'Body', side: { Examples: 'ex', notes: 'n' } }];
+  const at = Model.importRows(doc, 1, imported);
+  eq(at, 2); eq(doc.sheets[1].rows.length, 4); ok(doc.sheets[1].columns.includes('Examples'));
+  eq(doc.sheets[1].rows[3].notes, 'n'); eq(doc.sheets[1].rows[3].indent, '1');
+  Model.importRows(doc, 1, imported, { replace: true }); eq(doc.sheets[1].rows.length, 2);
+  const si = Model.addSheet(doc, 'Fresh'); Model.importRows(doc, si, imported); eq(doc.sheets[si].rows.length, 2, 'placeholder empty row replaced');
 });
 
 // ---- markdown ----

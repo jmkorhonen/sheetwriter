@@ -35,7 +35,7 @@
     <button id="btn-expand" title="Expand everything (Draft view)">Expand all</button>
   </div>
   <div class="group">
-    <button id="btn-export" title="Export a column as Markdown (Ctrl+E)">Export Markdown</button>
+    <button id="btn-markdown" title="Export a column as Markdown (Ctrl+E), or import a Markdown file">Markdown ▾</button>
     <button id="btn-settings" title="Title, author, main column, numbering, editor preferences">Settings</button>
     <button id="btn-help" title="Keyboard shortcuts and conventions (F1)">?</button>
   </div>
@@ -68,6 +68,27 @@
       <button type="button" id="ex-copy">Copy</button>
       <button type="button" id="ex-download" class="primary">Download .md</button>
       <button type="button" data-close>Close</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-import">
+  <form method="dialog" class="dlg">
+    <h2>Import Markdown</h2>
+    <div class="fields">
+      <label class="wide">Markdown <textarea id="im-text" spellcheck="false" placeholder="Paste Markdown here, choose a file, or drop a .md file anywhere on the window."></textarea></label>
+      <div class="wide about"><button type="button" class="small" id="im-choose">Choose file…</button><span id="im-file"></span><span id="im-detect"></span></div>
+      <label>Rows from <select id="im-gran"><option value="paragraphs">paragraphs (one paragraph per row)</option><option value="sentences">sentences (first sentence p, the rest s)</option><option value="lines">lines (one line per row)</option></select></label>
+      <label>Into <select id="im-dest"><option value="new">a new sheet</option><option value="split">one sheet per h1 heading</option><option value="append">the end of this sheet</option><option value="replace">this sheet, replacing its rows</option></select></label>
+      <label>Sheet name <input type="text" id="im-name"></label>
+      <label class="chk"><input type="checkbox" id="im-strip"> <span>Strip leading section numbers such as <code>1.2.1</code> from headings and paragraphs</span></label>
+    </div>
+    <div id="im-preview" class="im-preview"></div>
+    <p class="muted" style="font-size:12px;margin:6px 0 0">Headings become h1–h4 rows, list items become indented rows, <code>&gt; **notes:** …</code> blockquotes and <code>&lt;!-- notes: … --&gt;</code> comments fill side columns of the row above, other comments become x rows. Front matter title, author and description fill empty settings.</p>
+    <div class="actions">
+      <span id="im-info" class="muted"></span>
+      <button type="button" data-close>Cancel</button>
+      <button type="button" id="im-go" class="primary">Import</button>
     </div>
   </form>
 </dialog>
@@ -156,6 +177,8 @@
       <tr><td>Ctrl+E</td><td>Export Markdown</td></tr>
       <tr><td>Ctrl+PageUp / PageDown</td><td>Previous / next sheet</td></tr>
     </table>
+    <h3>Markdown import</h3>
+    <p>Markdown ▾ → Import, or drop a .md file on the window. One paragraph per row by default; files written one sentence per line are detected and imported line by line; a sentence mode splits paragraphs into p and s rows. Lists become indented rows, and the side-column blockquotes and comments that Export writes are read back into their columns, so export and import round-trip. Import into a new sheet, one sheet per h1, or the current sheet. Several files at once become several sheets.</p>
     <h3>Table of contents</h3>
     <p>The Contents button opens a pane listing the headings of this sheet or of all sheets, with numbers and section word counts. Click a heading to jump to it in Draft, Grid or Read view; collapsed sections open on the way. The heading you are working under is highlighted.</p>
     <h3>Grid and tabs</h3>
@@ -167,6 +190,7 @@
 </dialog>
 
 <input type="file" id="file-input" accept=".xlsx" hidden>
+<input type="file" id="md-input" accept=".md,.markdown,.txt,text/markdown,text/plain" multiple hidden>
 
 <script src="timers.js"></script>
 <script src="../vendor/exceljs.min.js"></script>
@@ -176,6 +200,7 @@
 <script src="md.js"></script>
 <script src="model.js"></script>
 <script src="exporter.js"></script>
+<script src="importer.js"></script>
 <script src="xlsxio.js"></script>
 <script src="views.js"></script>
 <script src="app.js"></script>

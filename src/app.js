@@ -622,7 +622,10 @@
   $('#btn-saveas').onclick = () => saveFile(true);
   $('#btn-undo').onclick = () => undo();
   $('#btn-redo').onclick = () => redo();
-  $('#btn-export').onclick = () => openExport();
+  $('#btn-markdown').onclick = e => showMenu(e.currentTarget, [
+    { label: 'Export Markdown…   Ctrl+E', action: () => openExport() },
+    { label: 'Import Markdown…', action: () => openImport('', '') },
+  ]);
   $('#btn-settings').onclick = () => openSettings();
   $('#btn-help').onclick = () => $('#dlg-help').showModal();
   $('#btn-toc').onclick = () => { prefs.tocOpen = !prefs.tocOpen; savePrefs(); render(); };
@@ -803,6 +806,122 @@
     dlgExport.showModal();
   }
 
+  // ---------- import dialog ----------
+  const dlgImport = $('#dlg-import');
+  let importExtra = []; // further files chosen at once, each imported as its own sheet
+  const importOpts = () => ({ granularity: $('#im-gran').value, stripNumbers: $('#im-strip').checked });
+  function openImport(text, fileName) {
+    importExtra = [];
+    $('#im-dest').value = 'new';
+    loadImportText(text || '', fileName || '');
+    dlgImport.showModal();
+    if (!text) $('#im-text').focus();
+  }
+  /** New text arrived (paste, file, drop): detect its shape and preselect the options. */
+  function loadImportText(text, fileName) {
+    $('#im-text').value = text;
+    $('#im-file').textContent = fileName ? fileName : '';
+    const info = Importer.analyze(text);
+    $('#im-gran').value = info.semanticLines ? 'lines' : 'paragraphs';
+    $('#im-strip').checked = info.numbered;
+    const notes = [];
+    if (info.semanticLines) notes.push('Looks like one sentence per line: importing lines as rows.');
+    if (info.numbered) notes.push('Headings carry section numbers: stripping them.');
+    $('#im-detect').textContent = notes.join(' ');
+    const base = (fileName || '').replace(/\.[^.]+$/, '').replace(/_/g, ' ').trim();
+    $('#im-name').value = info.title || base || 'Imported';
+    refreshImportPreview();
+  }
+  function refreshImportPreview() {
+    const text = $('#im-text').value;
+    const box = $('#im-preview');
+    const dest = $('#im-dest').value;
+    $('#im-name').parentElement.style.visibility = dest === 'new' || dest === 'split' ? 'visible' : 'hidden';
+    if (!text.trim()) { box.innerHTML = '<p class="muted im-empty">Paste Markdown above, choose a file, or drop a .md file on the window.</p>'; $('#im-info').textContent = ''; $('#im-go').disabled = true; return; }
+    const res = Importer.parse(text, importOpts());
+    const table = Views.el('table', {});
+    res.rows.slice(0, 300).forEach(r => {
+      const side = Object.entries(r.side || {}).map(([k, v]) => `${k}: ${v}`).join(' · ');
+      table.appendChild(Views.el('tr', { class: 'kind-' + r.kind },
+        Views.el('td', { class: 'k' }, r.kind), Views.el('td', { class: 'ind' }, r.indent || ''),
+        Views.el('td', { class: 't' }, r.text.length > 140 ? r.text.slice(0, 140) + '…' : r.text, side ? Views.el('span', { class: 'side' }, '  ' + side) : null)));
+    });
+    box.innerHTML = '';
+    box.appendChild(table);
+    if (res.rows.length > 300) box.appendChild(Views.el('p', { class: 'muted im-empty' }, `… and ${res.rows.length - 300} more rows`));
+    const parts = [`${res.stats.rows} rows, ${res.stats.headings} headings`];
+    if (res.columns.length) parts.push('side columns: ' + res.columns.join(', '));
+    if (importExtra.length) parts.push(`+ ${importExtra.length} more file${importExtra.length > 1 ? 's' : ''} as separate sheets`);
+    if (res.warnings.length) parts.push(res.warnings.join(' '));
+    $('#im-info').textContent = parts.join(' · ');
+    $('#im-go').disabled = !res.rows.length;
+  }
+  dlgImport.addEventListener('input', e => { if (e.target.id === 'im-text') { const t = e.target.value; if (t.trim()) { const info = Importer.analyze(t); if (!$('#im-file').textContent) { $('#im-name').value = info.title || 'Imported'; } } } refreshImportPreview(); });
+  dlgImport.addEventListener('change', refreshImportPreview);
+  $('#im-text').addEventListener('paste', () => setTimeout(() => loadImportText($('#im-text').value, ''), 0));
+  $('#im-choose').onclick = () => $('#md-input').click();
+  $('#md-input').onchange = async e => {
+    const files = [...e.target.files]; e.target.value = '';
+    if (!files.length) return;
+    await importFromFiles(files);
+  };
+  async function importFromFiles(files) {
+    const first = files[0];
+    importExtra = await Promise.all(files.slice(1).map(async f => ({ name: f.name.replace(/\.[^.]+$/, '').replace(/_/g, ' '), text: await f.text() })));
+    loadImportText(await first.text(), first.name);
+    if (!dlgImport.open) dlgImport.showModal();
+  }
+  $('#im-go').onclick = () => {
+    const text = $('#im-text').value;
+    if (!text.trim()) return;
+    const opts = importOpts();
+    const res = Importer.parse(text, opts);
+    const dest = $('#im-dest').value;
+    const name = $('#im-name').value.trim() || 'Imported';
+    const extra = importExtra.slice();
+    dlgImport.close();
+    let firstIndex = 0;
+    mutate(d => {
+      for (const k of ['title', 'author', 'description']) if (res.settings[k] && !d.settings[k]) d.settings[k] = res.settings[k];
+      if (dest === 'split') {
+        const chunks = []; let cur = { name, rows: [] };
+        for (const r of res.rows) { if (r.kind === 'h1' && cur.rows.length) { chunks.push(cur); cur = { name: r.text || name, rows: [] }; } else if (r.kind === 'h1' && !cur.rows.length) cur.name = r.text || name; cur.rows.push(r); }
+        if (cur.rows.length) chunks.push(cur);
+        let at = state.si;
+        for (const c of chunks) { at = Model.addSheet(d, c.name.slice(0, 31), at + 1); Model.importRows(d, at, c.rows, { replace: true }); }
+        state.si = at;
+      } else if (dest === 'new') {
+        const at = Model.addSheet(d, name.slice(0, 31), state.si + 1);
+        Model.importRows(d, at, res.rows, { replace: true });
+        state.si = at;
+      } else if (dest === 'append') {
+        firstIndex = Model.importRows(d, state.si, res.rows);
+      } else {
+        Model.importRows(d, state.si, res.rows, { replace: true });
+      }
+      let at = state.si;
+      for (const f of extra) {
+        const r2 = Importer.parse(f.text, opts);
+        at = Model.addSheet(d, f.name.slice(0, 31) || 'Imported', at + 1);
+        Model.importRows(d, at, r2.rows, { replace: true });
+      }
+      Model.ensureMetaColumns(d);
+    });
+    state.collapsed.clear();
+    focusRow(firstIndex, state.doc.mainColumn, 0);
+  };
+  // Files dropped on the window: .xlsx opens, .md/.txt imports.
+  document.addEventListener('dragover', e => { if ([...e.dataTransfer.types].includes('Files')) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } });
+  document.addEventListener('drop', async e => {
+    if (![...e.dataTransfer.types].includes('Files')) return;
+    e.preventDefault();
+    const files = [...e.dataTransfer.files];
+    const x = files.find(f => /\.xlsx$/i.test(f.name));
+    if (x) { if (!confirmDiscard()) return; await loadBuffer(await x.arrayBuffer(), x.name, null); return; }
+    const mds = files.filter(f => /\.(md|markdown|txt)$/i.test(f.name));
+    if (mds.length) await importFromFiles(mds);
+  });
+
   // ---------- settings dialog ----------
   function openSettings() {
     const d = state.doc, dlg = $('#dlg-settings');
@@ -911,5 +1030,5 @@
   // ---------- boot ----------
   render();
   offerRestore();
-  window.SheetWriter = { state, render, prefs, Model, XlsxIO, Exporter, APP };
+  window.SheetWriter = { state, render, prefs, Model, XlsxIO, Exporter, Importer, APP, openImport };
 })();

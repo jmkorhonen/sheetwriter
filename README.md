@@ -58,6 +58,7 @@ Press `?` in the toolbar or F1 for the full list.
 - **Grid**: every column as a table, frozen header and number column, drag handles, inline column renaming.
 - **Read**: the text as flowing prose, with numbering none / headings / all and indented rows as paragraphs or nested lists.
 - **Contents**: a pane listing the headings of this sheet or of all sheets, with numbers and section word counts. Click to jump; the heading you are working under is highlighted.
+- **Import Markdown** (Markdown ▾ → Import, or drop a `.md` file on the window): headings become h1–h4 rows, paragraphs become rows (or sentences, or lines for files written one sentence per line, which are detected), list items become indented rows, and the side-column blockquotes and comments that Export writes are read back into their columns. Into a new sheet, one sheet per h1, or the current sheet, with a preview first.
 - **Export Markdown** (Ctrl+E): any column as one document, whole workbook or one chapter, with the same options plus a side column as blockquotes or hidden comments.
 
 ## Develop
