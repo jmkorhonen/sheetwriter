@@ -79,12 +79,14 @@
       <label>Frozen columns in Grid <input type="number" id="st-freeze" min="0" max="10" step="1"></label>
       <label class="chk"><input type="checkbox" id="st-track-updated"> <span>Keep an <code>updated</code> column (time of last edit per row)</span></label>
       <label class="chk"><input type="checkbox" id="st-track-author"> <span>Keep an <code>author</code> column (last editor per row, from Author above)</span></label>
+      <label class="chk"><input type="checkbox" id="st-track-counts"> <span>Keep <code>words</code> and <code>chars</code> columns (per-row counts, written on save; placed before <code>updated</code> and <code>author</code>)</span></label>
       <div class="wide"><div class="fieldlabel">Count words and characters in</div><div id="st-count" class="checks"></div></div>
     </div>
     <p class="muted" style="font-size:12.5px;margin:4px 0 0">Stored in the protected <code>_sheetwriter</code> sheet inside the workbook, with created/modified dates and links to this editor. Extra rows you add to that sheet are kept. <span id="st-extra"></span></p>
     <h3>Editor (this browser)</h3>
     <div class="fields">
       <label>Enter key <select id="st-enter"><option value="row">Enter = new row, Shift+Enter = line break</option><option value="newline">Enter = line break, Shift+Enter = new row</option></select></label>
+      <label class="chk"><input type="checkbox" id="st-show-counts"> <span>Show counts under each card in Draft view: the row's words and characters, and for headings, paragraph groups and indented groups the total of everything under them</span></label>
       <label>Indent when a row starts with <select id="st-indent"><option value="   ">three spaces</option><option value="  ">two spaces</option><option value="    ">four spaces</option><option value="> ">&gt; and a space</option><option value="">nothing (Tab only)</option></select></label>
     </div>
     <h3>About</h3>

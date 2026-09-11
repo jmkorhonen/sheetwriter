@@ -15,6 +15,7 @@
 const Model = (() => {
   const RESERVED = ['no', 'kind', 'indent'];
   const META = ['updated', 'author'];
+  const COMPUTED = ['words', 'chars']; // per-row counts, written on save like "no", recomputed on load
   const KINDS = ['h1', 'h2', 'h3', 'h4', 'p', 's', 'x'];
   const KIND_ORDER = ['h1', 'h2', 'h3', 'h4', 'p', 's']; // promote/demote ladder
   const DEFAULT_COLUMNS = ['no', 'kind', 'indent', 'text', 'notes', 'sources'];
@@ -65,6 +66,8 @@ const Model = (() => {
   function isMeta(doc, col) {
     return (col === 'updated' && !!doc.settings.trackUpdated) || (col === 'author' && !!doc.settings.trackAuthor);
   }
+  function isComputed(doc, col) { return !!doc.settings.trackCounts && COMPUTED.includes(col); }
+  const isSystem = (doc, col) => RESERVED.includes(col) || isMeta(doc, col) || isComputed(doc, col);
   /** Mark a row as edited: maintains updated/author when tracking is on. */
   function touch(doc, sheet, row) {
     if (doc.settings.trackUpdated) { if (!sheet.columns.includes('updated')) addColumnTo(sheet, 'updated'); row.updated = stamp(); }
@@ -76,10 +79,11 @@ const Model = (() => {
     sheet.columns.splice(at, 0, name);
     sheet.rows.forEach(r => { if (r[name] == null) r[name] = ''; });
   }
-  /** Ensure meta columns exist on every chapter sheet when tracking is on. */
+  /** Ensure meta and computed columns exist on every chapter sheet when the settings ask for them. */
   function ensureMetaColumns(doc) {
     for (const s of doc.sheets) {
       if (s.kind !== 'chapter') continue;
+      if (doc.settings.trackCounts) { addColumnTo(s, 'words'); addColumnTo(s, 'chars'); }
       if (doc.settings.trackUpdated) addColumnTo(s, 'updated');
       if (doc.settings.trackAuthor) addColumnTo(s, 'author');
     }
@@ -152,7 +156,7 @@ const Model = (() => {
     return {
       version: 1,
       mainColumn: 'text',
-      settings: { numbering: 'continuous', title: '', author: '', description: '', created: new Date().toISOString(), trackUpdated: false, trackAuthor: false, freezeColumns: 1, countColumns: [], extra: {} },
+      settings: { numbering: 'continuous', title: '', author: '', description: '', created: new Date().toISOString(), trackUpdated: false, trackAuthor: false, trackCounts: true, freezeColumns: 1, countColumns: [], extra: {} },
       sheets: [newChapter('Chapter 1')],
     };
   }
@@ -188,7 +192,23 @@ const Model = (() => {
     for (const c of countColumns(doc, sheet)) { words += wordCount(row[c]); chars += charCount(row[c]); }
     return { words, chars };
   }
-  function userColumns(doc, sheet) { return sheet.columns.filter(c => !RESERVED.includes(c) && !isMeta(doc, c)); }
+  /** Totals of the block each row owns (heading section, paragraph group, indented group), including
+   *  the row itself and excluding "x" rows. null for rows that own nothing. */
+  function sectionCounts(doc, sheet) {
+    const rows = sheet.rows, n = rows.length;
+    const pw = [0], pc = [0], pr = [0];
+    for (let i = 0; i < n; i++) {
+      const x = normKind(rows[i].kind) === 'x';
+      const rc = x ? { words: 0, chars: 0 } : rowCounts(doc, sheet, rows[i]);
+      pw.push(pw[i] + rc.words); pc.push(pc[i] + rc.chars); pr.push(pr[i] + (x ? 0 : 1));
+    }
+    return rows.map((r, i) => {
+      const end = sectionEnd(rows, i);
+      if (end <= i + 1) return null;
+      return { words: pw[end] - pw[i], chars: pc[end] - pc[i], rows: pr[end] - pr[i] };
+    });
+  }
+  function userColumns(doc, sheet) { return sheet.columns.filter(c => !isSystem(doc, c)); }
   function sideColumns(doc, sheet) { return userColumns(doc, sheet).filter(c => c !== doc.mainColumn); }
   function rowIsEmpty(doc, sheet, row) { return userColumns(doc, sheet).every(c => !String(row[c] || '').trim()); }
   function wordCount(text) {
@@ -266,7 +286,7 @@ const Model = (() => {
     const a = s.rows[i], b = s.rows[i + 1];
     const caret = (a[main] || '').length;
     for (const c of s.columns) {
-      if (RESERVED.includes(c) || isMeta(doc, c)) continue;
+      if (isSystem(doc, c)) continue;
       const av = a[c] || '', bv = b[c] || '';
       if (!bv) continue;
       a[c] = av ? (c === main ? av + ' ' + bv : av + '\n' + bv) : bv;
@@ -335,7 +355,8 @@ const Model = (() => {
   function validColumnName(sheet, name, allowExisting) {
     name = String(name || '').trim();
     if (!name) return { ok: false, reason: 'Column name is empty.' };
-    if (RESERVED.includes(name.toLowerCase())) return { ok: false, reason: `"${name}" is reserved.` };
+    const low = name.toLowerCase();
+    if (RESERVED.includes(low) || META.includes(low) || COMPUTED.includes(low)) return { ok: false, reason: `"${name}" is reserved for SheetWriter's own columns.` };
     if (!allowExisting && sheet.columns.some(c => c.toLowerCase() === name.toLowerCase())) return { ok: false, reason: `Column "${name}" already exists.` };
     return { ok: true, name };
   }
@@ -429,10 +450,10 @@ const Model = (() => {
   }
 
   return {
-    RESERVED, META, KINDS, DEFAULT_COLUMNS, normKind, isHeading, indentOf, emptyRow, newChapter, newDoc, ensureIds, newId,
-    detectKindPrefix, detectIndentPrefix, stamp, isMeta, touch, ensureMetaColumns,
+    RESERVED, META, COMPUTED, KINDS, DEFAULT_COLUMNS, normKind, isHeading, indentOf, emptyRow, newChapter, newDoc, ensureIds, newId,
+    detectKindPrefix, detectIndentPrefix, stamp, isMeta, isComputed, isSystem, touch, ensureMetaColumns,
     sectionEnd, isCollapsible, blockOf, moveBlock, siblingMoveTarget,
-    chapterSheets, chapterIndex, numbering, countColumns, rowCounts, userColumns, sideColumns, rowIsEmpty,
+    chapterSheets, chapterIndex, numbering, countColumns, rowCounts, sectionCounts, userColumns, sideColumns, rowIsEmpty,
     wordCount, charCount, sheetCounts, docCounts, sheetWords, docWords, safeFileName,
     addRow, deleteRow, moveRow, duplicateRow, splitRow, mergeRow, setCell, setIndent, shiftIndent, cycleKind, shiftKind,
     validColumnName, addColumn, renameColumn, deleteColumn, moveColumn, setMainColumn,

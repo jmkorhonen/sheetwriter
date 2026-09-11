@@ -18,6 +18,7 @@ const XlsxIO = (() => {
     count_columns: 'Columns whose words and characters the status bar counts (empty = the main column)',
     track_updated: 'yes/no: keep an "updated" column with the time each row was last edited in SheetWriter',
     track_author: 'yes/no: keep an "author" column with the author who last edited each row in SheetWriter',
+    track_counts: 'yes/no: keep "words" and "chars" columns with per-row counts over the counted columns (written on save, recomputed on load)',
     created: 'First saved (ISO date)',
     modified: 'Last saved by SheetWriter (ISO date)',
     app: 'Editor that wrote this workbook',
@@ -68,6 +69,7 @@ const XlsxIO = (() => {
         case 'count_columns': doc.settings.countColumns = value.split(/[,;]/).map(s => s.trim()).filter(Boolean); break;
         case 'track_updated': doc.settings.trackUpdated = yes(value); break;
         case 'track_author': doc.settings.trackAuthor = yes(value); break;
+        case 'track_counts': doc.settings.trackCounts = yes(value); break;
         case 'created': if (value) doc.settings.created = value; break;
         case 'modified': case 'app': break;
         default:
@@ -96,6 +98,7 @@ const XlsxIO = (() => {
       ['count_columns', (doc.settings.countColumns || []).join(', ')],
       ['track_updated', doc.settings.trackUpdated ? 'yes' : 'no'],
       ['track_author', doc.settings.trackAuthor ? 'yes' : 'no'],
+      ['track_counts', doc.settings.trackCounts ? 'yes' : 'no'],
       ['created', doc.settings.created || now],
       ['modified', now],
       ['app', `${APP.name} ${APP.version}`],
@@ -159,7 +162,7 @@ const XlsxIO = (() => {
     for (let i = 0; i < headers.length; i++) {
       if (!headers[i]) headers[i] = 'col' + (i + 1);
       const low = headers[i].toLowerCase();
-      if (Model.RESERVED.includes(low) || Model.META.includes(low)) headers[i] = low;
+      if (Model.RESERVED.includes(low) || Model.META.includes(low) || Model.COMPUTED.includes(low)) headers[i] = low;
       if (low === mainLower) headers[i] = doc.mainColumn;
     }
     const columns = dedupeColumns(headers);
@@ -259,6 +262,7 @@ const XlsxIO = (() => {
     if (col === 'indent') return 7;
     if (col === 'updated') return 17;
     if (col === 'author' && doc.settings.trackAuthor) return 16;
+    if (Model.isComputed(doc, col)) return 7;
     if (col === doc.mainColumn) return 80;
     return 32;
   }
@@ -283,10 +287,11 @@ const XlsxIO = (() => {
     }
   }
 
-  /** Column order in the file: as in the sheet, but meta columns (updated, author) always last. */
+  /** Column order in the file: as in the sheet, then computed counts (words, chars), then meta (updated, author). */
   function fileColumns(doc, s) {
+    const computed = s.columns.filter(c => Model.isComputed(doc, c));
     const meta = s.columns.filter(c => Model.isMeta(doc, c));
-    return s.columns.filter(c => !Model.isMeta(doc, c)).concat(meta);
+    return s.columns.filter(c => !Model.isMeta(doc, c) && !Model.isComputed(doc, c)).concat(computed, meta);
   }
 
   /** → ArrayBuffer-like (Uint8Array/Buffer) suitable for new Blob([...]) */
@@ -315,9 +320,12 @@ const XlsxIO = (() => {
       rows.forEach(r => {
         const i = s.rows.indexOf(r);
         const vals = {};
+        const rc = doc.settings.trackCounts ? Model.rowCounts(doc, s, r) : null;
         for (const c of columns) {
           if (c === 'no') vals[c] = num.numbers[i];
           else if (c === 'indent') { const n = Model.indentOf(r); vals[c] = n ? n : ''; }
+          else if (rc && c === 'words') vals[c] = rc.words;
+          else if (rc && c === 'chars') vals[c] = rc.chars;
           else vals[c] = String(r[c] ?? '');
         }
         const row = ws.addRow(vals);
@@ -327,7 +335,7 @@ const XlsxIO = (() => {
         else if (r.kind === 'x') row.font = { italic: true, color: { argb: 'FF8A8A8A' } };
         const ind = num.indents[i] + (r.kind === 's' ? 1 : 0);
         if (!hl && ind) row.getCell(doc.mainColumn).alignment = { wrapText: true, vertical: 'top', indent: ind };
-        for (const c of columns) if (Model.isMeta(doc, c)) row.getCell(c).font = { color: { argb: 'FF8A8A8A' }, size: 9 };
+        for (const c of columns) if (Model.isMeta(doc, c) || Model.isComputed(doc, c)) row.getCell(c).font = { color: { argb: 'FF8A8A8A' }, size: 9 };
       });
       const hdr = ws.getRow(1);
       hdr.font = { bold: true };

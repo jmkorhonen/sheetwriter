@@ -6,7 +6,7 @@
 
   // Editor preferences live in this browser, not in the workbook.
   const PREF_KEY = 'sheetwriter.prefs';
-  const prefs = Object.assign({ enterMode: 'row', indentTrigger: '   ' }, (() => { try { return JSON.parse(localStorage.getItem(PREF_KEY) || '{}'); } catch (e) { return {}; } })());
+  const prefs = Object.assign({ enterMode: 'row', indentTrigger: '   ', showCounts: true }, (() => { try { return JSON.parse(localStorage.getItem(PREF_KEY) || '{}'); } catch (e) { return {}; } })());
   function savePrefs() { try { localStorage.setItem(PREF_KEY, JSON.stringify(prefs)); } catch (e) { /* ignore */ } }
 
   const state = {
@@ -48,7 +48,7 @@
 
   // ---------- render ----------
   function ctx() {
-    return { doc: state.doc, si: state.si, showSide: state.showSide, readScope: state.readScope, readNumbering: state.readNumbering, readColumn: state.readColumn, readIndented: state.readIndented,
+    return { doc: state.doc, si: state.si, showSide: state.showSide, showCounts: prefs.showCounts, readScope: state.readScope, readNumbering: state.readNumbering, readColumn: state.readColumn, readIndented: state.readIndented,
       collapsed: state.view === 'draft' ? state.collapsed : NO_COLLAPSE, editColumn: state.editColumn, editSheet: state.editSheet };
   }
   let rendering = false; // focusout events fired by replacing the DOM must not trigger row cleanup
@@ -187,6 +187,7 @@
     Views.autosize(t);
     const mw = t.closest('.mainwrap');
     if (mw) mw.classList.toggle('empty', !t.value);
+    if (state.view === 'draft') Views.refreshCard(viewRoot, ctx(), i); // live row counts
   });
   viewRoot.addEventListener('change', e => {
     const t = e.target;
@@ -217,7 +218,7 @@
     if (mw) mw.classList.remove('editing');
     const i = rowIndexOf(t);
     if (i == null || !isChapter()) return;
-    if (state.view === 'draft') Views.refreshCard(viewRoot, state.doc, sheet(), i);
+    if (state.view === 'draft') { Views.refreshCard(viewRoot, ctx(), i); Views.refreshMeta(viewRoot, ctx()); }
     // Empty rows are dropped once you leave them (not when the window loses focus, not within the same row).
     const s = sheet(), row = s.rows[i];
     if (row && s.rows.length > 1 && Model.rowIsEmpty(state.doc, s, row)) {
@@ -769,6 +770,8 @@
     $('#st-freeze').value = d.settings.freezeColumns ?? 1;
     $('#st-track-updated').checked = !!d.settings.trackUpdated;
     $('#st-track-author').checked = !!d.settings.trackAuthor;
+    $('#st-track-counts').checked = !!d.settings.trackCounts;
+    $('#st-show-counts').checked = !!prefs.showCounts;
     $('#st-enter').value = prefs.enterMode;
     const indSel = $('#st-indent');
     indSel.value = [...indSel.options].some(o => o.value === prefs.indentTrigger) ? prefs.indentTrigger : '   ';
@@ -805,9 +808,9 @@
       const vals = { title: $('#st-title').value, author: $('#st-author').value, description: $('#st-description').value,
         numbering: $('#st-numbering').value, freezeColumns: Math.max(0, Math.min(10, parseInt($('#st-freeze').value, 10) || 0)),
         countColumns: countSel.length === 1 && countSel[0] === sel.value ? [] : countSel,
-        trackUpdated: $('#st-track-updated').checked, trackAuthor: $('#st-track-author').checked };
+        trackUpdated: $('#st-track-updated').checked, trackAuthor: $('#st-track-author').checked, trackCounts: $('#st-track-counts').checked };
       const main = sel.value;
-      prefs.enterMode = $('#st-enter').value; prefs.indentTrigger = indSel.value; savePrefs();
+      prefs.enterMode = $('#st-enter').value; prefs.indentTrigger = indSel.value; prefs.showCounts = $('#st-show-counts').checked; savePrefs();
       dlg.close();
       mutate(doc => { Object.assign(doc.settings, vals); if (main && main !== doc.mainColumn) Model.setMainColumn(doc, main); Model.ensureMetaColumns(doc); });
     };

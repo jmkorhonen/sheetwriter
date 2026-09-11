@@ -47,11 +47,36 @@ const Views = (() => {
     return out;
   }
 
-  function metaText(doc, row) {
+  const fmt = n => Number(n).toLocaleString('en-US').replace(/,/g, ' ');
+  /** The small grey line under a card: row counts, section totals, last edit. */
+  function metaLine(ctx, sheet, row, i, sections) {
+    const doc = ctx.doc;
     const parts = [];
+    if (ctx.showCounts) {
+      const rc = Model.rowCounts(doc, sheet, row);
+      parts.push(`${fmt(rc.words)} w · ${fmt(rc.chars)} c`);
+      const sec = sections[i];
+      if (sec) parts.push(`section ${fmt(sec.words)} w · ${fmt(sec.chars)} c · ${sec.rows} rows`);
+    }
     if (doc.settings.trackUpdated && row.updated) parts.push(row.updated);
     if (doc.settings.trackAuthor && row.author) parts.push(row.author);
-    return parts.join(' · ');
+    return parts.join(' '); // em spaces: ordinary spaces would collapse to one
+  }
+  function setMeta(card, text) {
+    let m = card.querySelector('.meta');
+    if (!text) { if (m) m.remove(); return; }
+    if (!m) { m = el('div', { class: 'meta' }); card.querySelector('.body').appendChild(m); }
+    m.textContent = text;
+  }
+  /** Recompute every card's meta line (section totals change when any row changes). */
+  function refreshMeta(root, ctx) {
+    const sheet = ctx.doc.sheets[ctx.si];
+    if (!sheet || sheet.kind !== 'chapter') return;
+    const sections = Model.sectionCounts(ctx.doc, sheet);
+    root.querySelectorAll('.card').forEach(c => {
+      const i = +c.dataset.i; const row = sheet.rows[i];
+      if (row) setMeta(c, metaLine(ctx, sheet, row, i, sections));
+    });
   }
 
   // ---------- Draft ----------
@@ -64,12 +89,13 @@ const Views = (() => {
     const num = Model.numbering(doc, si);
     const side = ctx.showSide ? Model.sideColumns(doc, sheet) : [];
     const list = el('div', { class: 'cards' + (side.length ? ' has-side' : '') });
-    for (const i of visibleIndexes(sheet, ctx.collapsed)) list.appendChild(card(ctx, sheet, sheet.rows[i], i, num, side));
+    const sections = Model.sectionCounts(doc, sheet);
+    for (const i of visibleIndexes(sheet, ctx.collapsed)) list.appendChild(card(ctx, sheet, sheet.rows[i], i, num, side, sections));
     root.appendChild(list);
     autosizeAll(root);
   }
 
-  function card(ctx, sheet, row, i, num, side) {
+  function card(ctx, sheet, row, i, num, side, sections) {
     const main = ctx.doc.mainColumn;
     const kind = Model.normKind(row.kind);
     const text = row[main] || '';
@@ -92,7 +118,7 @@ const Views = (() => {
     const body = el('div', { class: 'body' }, mainWrap);
     if (indent) body.style.paddingLeft = (indent * 26) + 'px';
     if (collapsed) body.appendChild(el('button', { class: 'pill', type: 'button', title: 'Expand' }, `▸ ${hidden} hidden row${hidden === 1 ? '' : 's'}`));
-    const meta = metaText(ctx.doc, row);
+    const meta = metaLine(ctx, sheet, row, i, sections);
     if (meta) body.appendChild(el('div', { class: 'meta' }, meta));
     c.append(gutter, body);
     if (side.length) {
@@ -107,10 +133,11 @@ const Views = (() => {
     return c;
   }
 
-  /** Update one card's rendered view + empty flag from the model without rebuilding. */
-  function refreshCard(root, doc, sheet, i) {
+  /** Update one card's rendered view, empty flag and meta line from the model without rebuilding. */
+  function refreshCard(root, ctx, i) {
+    const doc = ctx.doc, sheet = doc.sheets[ctx.si];
     const c = root.querySelector(`.card[data-i="${i}"]`);
-    if (!c) return;
+    if (!c || !sheet || !sheet.rows[i]) return;
     const row = sheet.rows[i];
     const text = row[doc.mainColumn] || '';
     const mw = c.querySelector('.mainwrap');
@@ -120,10 +147,9 @@ const Views = (() => {
       const t = f.querySelector('textarea');
       f.classList.toggle('filled', !!t.value);
     });
-    const meta = metaText(doc, row);
-    let m = c.querySelector('.meta');
-    if (meta && !m) { m = el('div', { class: 'meta' }); c.querySelector('.body').appendChild(m); }
-    if (m) m.textContent = meta;
+    // own section only; other cards' totals are refreshed by refreshMeta when the row is left
+    const sections = []; sections[i] = Model.sectionCounts(doc, sheet)[i];
+    setMeta(c, metaLine(ctx, sheet, row, i, sections));
   }
 
   function dataSheetTable(sheet, ctx) {
@@ -157,12 +183,12 @@ const Views = (() => {
     const hr = el('tr', {});
     hr.appendChild(el('th', { class: 'handle-col' }, ''));
     for (const col of sheet.columns) {
-      const isMain = col === doc.mainColumn, isRes = RESERVED.includes(col), isMeta = Model.isMeta(doc, col);
+      const isMain = col === doc.mainColumn, isRes = RESERVED.includes(col), isMeta = Model.isMeta(doc, col) || Model.isComputed(doc, col);
       const th = el('th', { class: (isMain ? 'main' : '') + (isRes ? ' reserved' : '') + (col === 'no' ? ' num' : '') + (isMeta ? ' meta' : ''), 'data-col': col });
       if (!isRes && !isMeta && ctx.editColumn === col) {
         th.appendChild(el('input', { type: 'text', class: 'colname-edit', 'data-col': col, value: col, spellcheck: 'false' }));
       } else {
-        const titles = { no: 'Computed numbering, written to the file on save', kind: 'Row kind', indent: 'Indent level (Tab / Shift+Tab)', updated: 'Last edited (maintained by SheetWriter)', author: 'Last editor (maintained by SheetWriter)' };
+        const titles = { no: 'Computed numbering, written to the file on save', kind: 'Row kind', indent: 'Indent level (Tab / Shift+Tab)', updated: 'Last edited (maintained by SheetWriter)', author: 'Last editor (maintained by SheetWriter)', words: 'Words in the counted columns (computed, written on save)', chars: 'Characters in the counted columns (computed, written on save)' };
         th.appendChild(el('span', { class: 'colname' + (isRes || isMeta ? '' : ' editable'), 'data-col': col, title: (isRes || isMeta) ? titles[col] : 'Click to rename' }, col, isMain ? ' ★' : ''));
       }
       if (!isRes && !isMeta) {
@@ -192,6 +218,7 @@ const Views = (() => {
         }
         if (col === 'indent') { tr.appendChild(el('td', { class: 'indent' }, Model.indentOf(row) || '')); continue; }
         if (Model.isMeta(doc, col)) { tr.appendChild(el('td', { class: 'meta' }, row[col] || '')); continue; }
+        if (Model.isComputed(doc, col)) { const rc = Model.rowCounts(doc, sheet, row); tr.appendChild(el('td', { class: 'meta num' }, fmt(col === 'words' ? rc.words : rc.chars))); continue; }
         const t = el('textarea', { class: 'cell' + (col === doc.mainColumn ? ' main' : ''), 'data-col': col, rows: '1' });
         t.value = row[col] || '';
         const td = el('td', { class: col === doc.mainColumn ? 'main' : '' }, t);
@@ -288,5 +315,5 @@ const Views = (() => {
     if (edit) { edit.focus(); edit.select(); }
   }
 
-  return { el, autosize, autosizeAll, visibleIndexes, renderDraft, refreshCard, renderGrid, applyFreeze, renderRead, renderTabs };
+  return { el, autosize, autosizeAll, visibleIndexes, renderDraft, refreshCard, refreshMeta, renderGrid, applyFreeze, renderRead, renderTabs };
 })();

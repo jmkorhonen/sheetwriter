@@ -19,7 +19,8 @@ Drafting argument by argument in a spreadsheet is useful: you can reorder, annot
 | `kind` | `h1`–`h4` heading, `p` paragraph, `s` sentence continuing the previous paragraph, `x` excluded from export. Empty means `p`. |
 | `indent` | Nesting level of a body row: 0, 1, 2 … |
 | `no` | Hierarchical number, written by the app on save. Used to restore the order if the sheet was sorted in Excel, then recomputed. |
-| `updated`, `author` | Optional, maintained by the app when switched on in Settings. Always the last columns in the file. |
+| `words`, `chars` | Per-row counts over the counted columns, written on save and recomputed on load. Switchable off in Settings. |
+| `updated`, `author` | Optional, maintained by the app when switched on in Settings. Always the last columns in the file, after `words` and `chars`. |
 | anything else | Yours: `notes`, `sources`, `examples`, `status`… |
 
 - Sheets without a `text` column are **data sheets**: shown read-only in the app and written back unchanged.
@@ -53,7 +54,7 @@ Press `?` in the toolbar or F1 for the full list.
 
 ## Views and export
 
-- **Draft**: one card per row, Markdown rendered when the row is not being edited, side columns to the right (empty ones appear when the card is focused).
+- **Draft**: one card per row, Markdown rendered when the row is not being edited, side columns to the right (empty ones appear when the card is focused). A small grey line under each card shows the row's words and characters, the total of everything a heading, paragraph group or indented group owns, and the last edit when tracking is on.
 - **Grid**: every column as a table, frozen header and number column, drag handles, inline column renaming.
 - **Read**: the text as flowing prose, with numbering none / headings / all and indented rows as paragraphs or nested lists.
 - **Export Markdown** (Ctrl+E): any column as one document, whole workbook or one chapter, with the same options plus a side column as blockquotes or hidden comments.
