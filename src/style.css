@@ -111,10 +111,12 @@ textarea.cell.main { font-family: var(--serif); font-size: 16px; }
 table.grid { border-collapse: separate; border-spacing: 0; background: var(--paper); min-width: 100%; font-size: 13.5px; }
 table.grid th, table.grid td { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); vertical-align: top; padding: 2px 4px; text-align: left; background: var(--paper); }
 table.grid th { background: #f2f1ee; font-weight: 600; white-space: nowrap; position: sticky; top: 0; z-index: 3; border-top: 1px solid var(--line); }
-table.grid th.handle-col, table.grid td.handle-col { position: sticky; left: 0; z-index: 2; width: 22px; min-width: 22px; padding: 2px; text-align: center; color: #c4c1bb; }
-table.grid th.num, table.grid td.num { position: sticky; left: 22px; z-index: 2; }
-table.grid th.handle-col, table.grid th.num { z-index: 4; }
-table.grid td.num { font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: nowrap; background: #fbfaf8; box-shadow: 1px 0 0 var(--line); }
+table.grid th.handle-col, table.grid td.handle-col { width: 22px; min-width: 22px; padding: 2px; text-align: center; color: #c4c1bb; }
+table.grid .frozen { position: sticky; z-index: 2; }
+table.grid td.frozen { background: #fbfaf8; }
+table.grid th.frozen { z-index: 4; }
+table.grid .frozen-last { box-shadow: 2px 0 0 var(--line); }
+table.grid td.num { font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
 table.grid td.num.warn { color: var(--warn); }
 table.grid th .colname.editable { cursor: text; border-bottom: 1px dashed transparent; }
 table.grid th .colname.editable:hover { border-bottom-color: var(--accent); color: var(--accent); }
@@ -168,8 +170,14 @@ dialog h2 { margin: 0 0 12px; font-size: 18px; }
 dialog h3 { margin: 14px 0 6px; font-size: 14px; }
 dialog .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px 16px; margin-bottom: 8px; }
 dialog .fields label { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--muted); }
-dialog .fields label.chk { flex-direction: row; align-items: center; gap: 6px; color: var(--ink); }
-dialog .fields label.wide { grid-column: 1 / -1; }
+dialog .fields label.chk { grid-column: 1 / -1; flex-direction: row; align-items: flex-start; gap: 6px; color: var(--ink); }
+dialog .fields label.chk input { flex: none; margin: 3px 0 0; }
+dialog .fields label.chk.inline { grid-column: auto; display: inline-flex; align-items: center; }
+dialog .fields label.chk.inline input { margin: 0; }
+dialog .fields .wide, dialog .fields label.wide { grid-column: 1 / -1; }
+dialog .fieldlabel { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+dialog .checks { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+dialog input[type=number] { font: inherit; padding: 4px 6px; border: 1px solid var(--line); border-radius: 4px; width: 80px; }
 dialog input[type=text], dialog select, dialog textarea { font: inherit; padding: 4px 6px; border: 1px solid var(--line); border-radius: 4px; }
 #ex-preview { width: 100%; height: 300px; font-family: var(--mono); font-size: 13px; white-space: pre; }
 dialog .actions { display: flex; gap: 8px; align-items: center; justify-content: flex-end; margin-top: 12px; }

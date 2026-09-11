@@ -75,9 +75,11 @@
       <label>Author <input type="text" id="st-author"></label>
       <label class="wide">Description <input type="text" id="st-description"></label>
       <label>Main text column <select id="st-main"></select></label>
-      <label class="chk"><input type="checkbox" id="st-prefix"> Prefix numbering with the chapter number (when more than one chapter)</label>
-      <label class="chk"><input type="checkbox" id="st-track-updated"> Keep an <code>updated</code> column (time of last edit per row)</label>
-      <label class="chk"><input type="checkbox" id="st-track-author"> Keep an <code>author</code> column (last editor per row, from Author above)</label>
+      <label>Numbering across sheets <select id="st-numbering"><option value="continuous">continue from the previous sheet</option><option value="per-sheet">restart in each sheet</option></select></label>
+      <label>Frozen columns in Grid <input type="number" id="st-freeze" min="0" max="10" step="1"></label>
+      <label class="chk"><input type="checkbox" id="st-track-updated"> <span>Keep an <code>updated</code> column (time of last edit per row)</span></label>
+      <label class="chk"><input type="checkbox" id="st-track-author"> <span>Keep an <code>author</code> column (last editor per row, from Author above)</span></label>
+      <div class="wide"><div class="fieldlabel">Count words and characters in</div><div id="st-count" class="checks"></div></div>
     </div>
     <p class="muted" style="font-size:12.5px;margin:4px 0 0">Stored in the protected <code>_sheetwriter</code> sheet inside the workbook, with created/modified dates and links to this editor. Extra rows you add to that sheet are kept. <span id="st-extra"></span></p>
     <h3>Editor (this browser)</h3>
@@ -118,7 +120,7 @@
     <p>A text editor whose document is an Excel workbook. One argument per row, extra columns for notes, sources, examples. Each sheet is a chapter. The <code>kind</code> column marks headings and paragraphs, <code>indent</code> nests rows, <code>no</code> holds the numbering, written on save. Cells are Markdown.</p>
     <h3>Kinds and structure</h3>
     <table>
-      <tr><td>h1 … h4</td><td>Headings. Numbered 1, 1.1, 1.1.1 … Type <kbd>#</kbd> to <kbd>####</kbd> and a space at the start of a row to set it.</td></tr>
+      <tr><td>h1 … h4</td><td>Headings. h1 is always one number (1, 2, 3), h2 two (2.1), h3 three (2.1.1). Numbering continues from sheet to sheet, so a chapter per sheet that starts with an h1 row is numbered 2, 3, …; Settings can make each sheet restart at 1 instead. Type <kbd>#</kbd> to <kbd>####</kbd> and a space at the start of a row to set the kind.</td></tr>
       <tr><td>p</td><td>Paragraph. Numbered one level below its heading, plus its indent.</td></tr>
       <tr><td>indent</td><td><kbd>Tab</kbd> / <kbd>Shift+Tab</kbd> (Draft view), <kbd>Ctrl+]</kbd> / <kbd>Ctrl+[</kbd>, or type three spaces at the start of a row (changeable in Settings). An indented row under 2.1 becomes 2.1.1.</td></tr>
       <tr><td>s</td><td>Sentence that continues the previous paragraph on export (still its own row and number).</td></tr>

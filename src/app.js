@@ -51,18 +51,22 @@
     return { doc: state.doc, si: state.si, showSide: state.showSide, readScope: state.readScope, readNumbering: state.readNumbering, readColumn: state.readColumn, readIndented: state.readIndented,
       collapsed: state.view === 'draft' ? state.collapsed : NO_COLLAPSE, editColumn: state.editColumn, editSheet: state.editSheet };
   }
+  let rendering = false; // focusout events fired by replacing the DOM must not trigger row cleanup
   function render() {
-    clampSi();
-    Views.renderTabs(tabsRoot, ctx());
-    viewRoot.className = 'view-' + state.view;
-    if (state.view === 'draft') Views.renderDraft(viewRoot, ctx());
-    else if (state.view === 'grid') Views.renderGrid(viewRoot, ctx());
-    else Views.renderRead(viewRoot, ctx());
-    document.querySelectorAll('#toolbar .views button').forEach(b => b.classList.toggle('active', b.dataset.view === state.view));
-    $('#btn-undo').disabled = !history.undo.length;
-    $('#btn-redo').disabled = !history.redo.length;
-    renderStatus();
-    applyFocus();
+    rendering = true;
+    try {
+      clampSi();
+      Views.renderTabs(tabsRoot, ctx());
+      viewRoot.className = 'view-' + state.view;
+      if (state.view === 'draft') Views.renderDraft(viewRoot, ctx());
+      else if (state.view === 'grid') Views.renderGrid(viewRoot, ctx());
+      else Views.renderRead(viewRoot, ctx());
+      document.querySelectorAll('#toolbar .views button').forEach(b => b.classList.toggle('active', b.dataset.view === state.view));
+      $('#btn-undo').disabled = !history.undo.length;
+      $('#btn-redo').disabled = !history.redo.length;
+      renderStatus();
+      applyFocus();
+    } finally { rendering = false; }
   }
   const fmt = n => n.toLocaleString('en-US').replace(/,/g, ' ');
   function docTitle() { return state.doc.settings.title || state.fileName.replace(/\.xlsx$/i, ''); }
@@ -71,8 +75,8 @@
     const parts = [state.fileName, state.dirty ? 'unsaved changes' : 'saved'];
     const f = state.lastFocus;
     if (sheet && sheet.kind === 'chapter' && f && f.i != null && sheet.rows[f.i]) {
-      const t = sheet.rows[f.i][doc.mainColumn];
-      parts.push(`Row ${Model.numbering(doc, state.si).numbers[f.i]}: ${fmt(Model.wordCount(t))} words, ${fmt(Model.charCount(t))} chars`);
+      const rc = Model.rowCounts(doc, sheet, sheet.rows[f.i]);
+      parts.push(`Row ${Model.numbering(doc, state.si).numbers[f.i]}: ${fmt(rc.words)} words, ${fmt(rc.chars)} chars`);
     }
     if (sheet && sheet.kind === 'chapter') {
       const c = Model.sheetCounts(doc, sheet);
@@ -208,6 +212,7 @@
     const t = e.target;
     if (t.matches('input.colname-edit')) { commitColumnRename(t); return; }
     if (!t.matches('textarea.cell')) return;
+    if (rendering || !t.isConnected) return; // blur caused by a re-render, not by the user leaving the row
     const mw = t.closest('.mainwrap');
     if (mw) mw.classList.remove('editing');
     const i = rowIndexOf(t);
@@ -607,7 +612,8 @@
   }
   async function loadBuffer(buffer, name, handle) {
     try {
-      const { doc, sources, warnings } = await XlsxIO.load(buffer);
+      const { doc, sources, warnings, hasSettings } = await XlsxIO.load(buffer);
+      if (!hasSettings && !doc.settings.title) doc.settings.title = name.replace(/\.xlsx$/i, '').replace(/_/g, ' ').trim();
       loadDoc(doc, name, handle, sources);
       if (handle) addRecent(name, handle);
       if (warnings.length) alert(warnings.join('\n'));
@@ -718,7 +724,7 @@
     const scopeSel = $('#ex-scope');
     const multi = Model.chapterSheets(state.doc).length > 1;
     scopeSel.value = multi ? 'all' : 'sheet';
-    $('#ex-titles').checked = multi;
+    $('#ex-titles').checked = multi && state.doc.settings.numbering === 'per-sheet';
     const refreshCols = () => {
       const cols = exportColumns(scopeSel.value === 'all');
       fill($('#ex-column'), cols, $('#ex-column').value || state.doc.mainColumn, false);
@@ -759,14 +765,24 @@
     $('#st-title').value = d.settings.title || '';
     $('#st-author').value = d.settings.author || '';
     $('#st-description').value = d.settings.description || '';
-    $('#st-prefix').checked = !!d.settings.chapterPrefix;
+    $('#st-numbering').value = d.settings.numbering === 'per-sheet' ? 'per-sheet' : 'continuous';
+    $('#st-freeze').value = d.settings.freezeColumns ?? 1;
     $('#st-track-updated').checked = !!d.settings.trackUpdated;
     $('#st-track-author').checked = !!d.settings.trackAuthor;
     $('#st-enter').value = prefs.enterMode;
     const indSel = $('#st-indent');
     indSel.value = [...indSel.options].some(o => o.value === prefs.indentTrigger) ? prefs.indentTrigger : '   ';
     const sel = $('#st-main'); sel.innerHTML = '';
-    exportColumns(true).forEach(c => sel.appendChild(Views.el('option', { value: c, selected: c === d.mainColumn }, c)));
+    const cols = exportColumns(true);
+    cols.forEach(c => sel.appendChild(Views.el('option', { value: c, selected: c === d.mainColumn }, c)));
+    const countBox = $('#st-count'); countBox.innerHTML = '';
+    const counted = new Set((d.settings.countColumns || []).length ? d.settings.countColumns : [d.mainColumn]);
+    cols.forEach(c => countBox.appendChild(Views.el('label', { class: 'chk inline' }, Views.el('input', { type: 'checkbox', value: c, checked: counted.has(c) }), ' ', c)));
+    const formSnapshot = () => JSON.stringify([...dlg.querySelectorAll('input, select')].map(n => n.type === 'checkbox' ? n.checked : n.value));
+    const initial = formSnapshot();
+    const refreshSaveButton = () => { $('#st-save').disabled = formSnapshot() === initial; };
+    dlg.oninput = dlg.onchange = refreshSaveButton;
+    refreshSaveButton();
     $('#st-extra').textContent = Object.keys(d.settings.extra || {}).length
       ? 'Extra keys kept from the file: ' + Object.keys(d.settings.extra).join(', ')
       : '';
@@ -785,7 +801,10 @@
       setTimeout(() => { b.disabled = false; b.textContent = 'Download latest version'; }, 3000);
     };
     $('#st-save').onclick = () => {
-      const vals = { title: $('#st-title').value, author: $('#st-author').value, description: $('#st-description').value, chapterPrefix: $('#st-prefix').checked,
+      const countSel = [...countBox.querySelectorAll('input:checked')].map(n => n.value);
+      const vals = { title: $('#st-title').value, author: $('#st-author').value, description: $('#st-description').value,
+        numbering: $('#st-numbering').value, freezeColumns: Math.max(0, Math.min(10, parseInt($('#st-freeze').value, 10) || 0)),
+        countColumns: countSel.length === 1 && countSel[0] === sel.value ? [] : countSel,
         trackUpdated: $('#st-track-updated').checked, trackAuthor: $('#st-track-author').checked };
       const main = sel.value;
       prefs.enterMode = $('#st-enter').value; prefs.indentTrigger = indSel.value; savePrefs();
@@ -838,7 +857,7 @@
     if (w === lastWidth) return;
     lastWidth = w;
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => Views.autosizeAll(viewRoot), 50);
+    resizeTimer = setTimeout(() => { Views.autosizeAll(viewRoot); if (state.view === 'grid') Views.applyFreeze(viewRoot.querySelector('table.grid'), state.doc.settings.freezeColumns); }, 50);
   };
   if (window.ResizeObserver) new ResizeObserver(onResize).observe(viewRoot);
   window.addEventListener('resize', onResize);

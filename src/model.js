@@ -2,7 +2,8 @@
  *
  * doc = {
  *   version, mainColumn,
- *   settings: {chapterPrefix, title, author, description, created, trackUpdated, trackAuthor, extra:{key:[value, description]}},
+ *   settings: {numbering: 'continuous'|'per-sheet', title, author, description, created, trackUpdated, trackAuthor,
+ *              freezeColumns, countColumns: [...], extra:{key:[value, description]}},
  *   sheets: [
  *     {name, kind:'chapter', columns:[...], rows:[{col: text, _id}]},
  *     {name, kind:'data', cells:[[...]]}
@@ -151,7 +152,7 @@ const Model = (() => {
     return {
       version: 1,
       mainColumn: 'text',
-      settings: { chapterPrefix: true, title: '', author: '', description: '', created: new Date().toISOString(), trackUpdated: false, trackAuthor: false, extra: {} },
+      settings: { numbering: 'continuous', title: '', author: '', description: '', created: new Date().toISOString(), trackUpdated: false, trackAuthor: false, freezeColumns: 1, countColumns: [], extra: {} },
       sheets: [newChapter('Chapter 1')],
     };
   }
@@ -163,15 +164,29 @@ const Model = (() => {
     for (let i = 0; i <= si; i++) if (doc.sheets[i].kind === 'chapter') n++;
     return n;
   }
-  function prefixFor(doc, si) {
-    if (!doc.settings.chapterPrefix) return null;
-    if (chapterSheets(doc).length < 2) return null;
-    return chapterIndex(doc, si);
-  }
+  /** Numbering of sheet si. With settings.numbering === 'continuous' (default) counters carry on
+   *  from the previous chapter sheets; with 'per-sheet' every sheet starts at 1. */
   function numbering(doc, si) {
     const s = doc.sheets[si];
     if (!s || s.kind !== 'chapter') return { numbers: [], warnings: [], levels: [], indents: [] };
-    return SheetNumbering.compute(s.rows, { prefix: prefixFor(doc, si) });
+    let state = null;
+    if (doc.settings.numbering !== 'per-sheet') {
+      for (let k = 0; k < si; k++) {
+        const sk = doc.sheets[k];
+        if (sk.kind === 'chapter') state = SheetNumbering.compute(sk.rows, { state }).state;
+      }
+    }
+    return SheetNumbering.compute(s.rows, { state });
+  }
+  /** Columns counted in the status bar: the chosen ones that exist in this sheet, else the main column. */
+  function countColumns(doc, sheet) {
+    const chosen = (doc.settings.countColumns || []).filter(c => sheet.columns.includes(c));
+    return chosen.length ? chosen : [doc.mainColumn];
+  }
+  function rowCounts(doc, sheet, row) {
+    let words = 0, chars = 0;
+    for (const c of countColumns(doc, sheet)) { words += wordCount(row[c]); chars += charCount(row[c]); }
+    return { words, chars };
   }
   function userColumns(doc, sheet) { return sheet.columns.filter(c => !RESERVED.includes(c) && !isMeta(doc, c)); }
   function sideColumns(doc, sheet) { return userColumns(doc, sheet).filter(c => c !== doc.mainColumn); }
@@ -181,13 +196,14 @@ const Model = (() => {
     return t ? t.split(/\s+/).length : 0;
   }
   function charCount(text) { return String(text || '').length; }
-  /** Counts over the main column, excluding "x" rows: {rows, words, chars} */
+  /** Counts over the counted columns, excluding "x" rows: {rows, words, chars} */
   function sheetCounts(doc, sheet) {
     const c = { rows: 0, words: 0, chars: 0 };
     if (sheet.kind !== 'chapter') return c;
     for (const r of sheet.rows) {
       if (normKind(r.kind) === 'x') continue;
-      c.rows++; c.words += wordCount(r[doc.mainColumn]); c.chars += charCount(r[doc.mainColumn]);
+      const rc = rowCounts(doc, sheet, r);
+      c.rows++; c.words += rc.words; c.chars += rc.chars;
     }
     return c;
   }
@@ -416,7 +432,7 @@ const Model = (() => {
     RESERVED, META, KINDS, DEFAULT_COLUMNS, normKind, isHeading, indentOf, emptyRow, newChapter, newDoc, ensureIds, newId,
     detectKindPrefix, detectIndentPrefix, stamp, isMeta, touch, ensureMetaColumns,
     sectionEnd, isCollapsible, blockOf, moveBlock, siblingMoveTarget,
-    chapterSheets, chapterIndex, prefixFor, numbering, userColumns, sideColumns, rowIsEmpty,
+    chapterSheets, chapterIndex, numbering, countColumns, rowCounts, userColumns, sideColumns, rowIsEmpty,
     wordCount, charCount, sheetCounts, docCounts, sheetWords, docWords, safeFileName,
     addRow, deleteRow, moveRow, duplicateRow, splitRow, mergeRow, setCell, setIndent, shiftIndent, cycleKind, shiftKind,
     validColumnName, addColumn, renameColumn, deleteColumn, moveColumn, setMainColumn,

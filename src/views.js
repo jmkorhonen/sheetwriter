@@ -206,8 +206,29 @@ const Views = (() => {
     table.appendChild(tbody);
     root.appendChild(el('div', { class: 'scroll' }, table));
     autosizeAll(root);
+    applyFreeze(table, doc.settings.freezeColumns);
     const edit = root.querySelector('input.colname-edit');
     if (edit) { edit.focus(); edit.select(); }
+  }
+
+  /** Freeze the handle column plus the first n sheet columns (sticky left offsets measured from the header). */
+  function applyFreeze(table, n) {
+    if (!table) return;
+    n = Math.max(0, Math.min(+n || 0, 10));
+    const headCells = [...table.querySelectorAll('thead th')];
+    const count = Math.min(n + 1, Math.max(0, headCells.length - 1)); // never the "+ column" header
+    let left = 0;
+    for (let k = 0; k < count; k++) {
+      const w = headCells[k].getBoundingClientRect().width;
+      for (const tr of table.rows) {
+        const c = tr.children[k];
+        if (!c) continue;
+        c.classList.add('frozen');
+        c.classList.toggle('frozen-last', k === count - 1);
+        c.style.left = left + 'px';
+      }
+      left += w;
+    }
   }
 
   // ---------- Read ----------
@@ -236,7 +257,7 @@ const Views = (() => {
       scope: ctx.readScope === 'all' ? 'all' : si,
       numbering: ctx.readNumbering || false,
       indented: ctx.readIndented || 'paragraphs',
-      sheetTitles: ctx.readScope === 'all' && Model.chapterSheets(doc).length > 1,
+      sheetTitles: ctx.readScope === 'all' && doc.settings.numbering === 'per-sheet' && Model.chapterSheets(doc).length > 1,
     });
     const art = el('article', { class: 'read', html: MD.render(md) });
     if (ctx.readScope !== 'all' && sheet && sheet.kind !== 'chapter') art.innerHTML = '<p class="muted">Data sheet: nothing to read here.</p>';
@@ -248,7 +269,6 @@ const Views = (() => {
     const { doc, si } = ctx;
     root.innerHTML = '';
     let ci = 0;
-    const multi = doc.settings.chapterPrefix && Model.chapterSheets(doc).length > 1;
     doc.sheets.forEach((s, i) => {
       const isCh = s.kind === 'chapter';
       if (isCh) ci++;
@@ -259,7 +279,7 @@ const Views = (() => {
       const b = el('button', {
         type: 'button', class: 'tab' + (i === si ? ' active' : '') + (isCh ? '' : ' data'), 'data-i': i, draggable: 'true',
         title: isCh ? `Chapter ${ci}: ${s.name} — double-click to rename, drag to reorder` : `Data sheet: ${s.name} (read-only here, written back unchanged)`,
-      }, isCh ? (multi ? `${ci}. ` : '') : '⊞ ', s.name);
+      }, isCh ? '' : '⊞ ', s.name);
       root.appendChild(b);
     });
     root.appendChild(el('button', { type: 'button', class: 'tab add', id: 'tab-add', title: 'Add a chapter after the current one' }, '+'));
@@ -268,5 +288,5 @@ const Views = (() => {
     if (edit) { edit.focus(); edit.select(); }
   }
 
-  return { el, autosize, autosizeAll, visibleIndexes, renderDraft, refreshCard, renderGrid, renderRead, renderTabs };
+  return { el, autosize, autosizeAll, visibleIndexes, renderDraft, refreshCard, renderGrid, applyFreeze, renderRead, renderTabs };
 })();

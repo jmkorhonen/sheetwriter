@@ -3,7 +3,7 @@
  * opts = {
  *   column:      which column becomes the document (default doc.mainColumn)
  *   scope:       'all' | sheet index
- *   sheetTitles: emit "# <sheet name>" per chapter (default: true when >1 chapter and scope all)
+ *   sheetTitles: emit "# <sheet name>" per chapter (default false)
  *   numbering:   false | 'headings' | 'all' (true = 'all'): prepend computed numbers
  *   indented:    'paragraphs' (default) | 'lists': how rows with indent > 0 are written
  *   side:        null | {column, mode: 'quote'|'comment'}
@@ -18,7 +18,7 @@ const Exporter = (() => {
     const selected = opts.scope === 'all' || opts.scope == null
       ? chapters
       : chapters.filter(x => x.i === +opts.scope);
-    const sheetTitles = opts.sheetTitles != null ? !!opts.sheetTitles : (selected.length > 1);
+    const sheetTitles = !!opts.sheetTitles;
     const offset = sheetTitles ? 1 : 0;
     const numAll = opts.numbering === true || opts.numbering === 'all';
     const numHead = numAll || opts.numbering === 'headings';

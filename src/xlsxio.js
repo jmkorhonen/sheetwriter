@@ -13,7 +13,9 @@ const XlsxIO = (() => {
     author: 'Author',
     description: 'Short description',
     main_column: 'Column that holds the text you are writing. A sheet with this column is a chapter.',
-    chapter_prefix: 'yes/no: prefix numbering with the chapter (sheet) index when there is more than one chapter',
+    numbering: 'continuous: numbering carries on from sheet to sheet (h1 is always one number, 1, 2, 3 …); per-sheet: every sheet starts at 1',
+    freeze_columns: 'How many leading columns stay frozen in the Grid view and in Excel',
+    count_columns: 'Columns whose words and characters the status bar counts (empty = the main column)',
     track_updated: 'yes/no: keep an "updated" column with the time each row was last edited in SheetWriter',
     track_author: 'yes/no: keep an "author" column with the author who last edited each row in SheetWriter',
     created: 'First saved (ISO date)',
@@ -60,7 +62,10 @@ const XlsxIO = (() => {
         case 'author': doc.settings.author = value; break;
         case 'description': doc.settings.description = value; break;
         case 'main_column': if (value.trim()) doc.mainColumn = value.trim(); break;
-        case 'chapter_prefix': doc.settings.chapterPrefix = yes(value); break;
+        case 'chapter_prefix': doc.settings.numbering = yes(value) ? 'continuous' : 'per-sheet'; break; // files from 0.3.0
+        case 'numbering': doc.settings.numbering = value.trim() === 'per-sheet' ? 'per-sheet' : 'continuous'; break;
+        case 'freeze_columns': { const n = parseInt(value, 10); doc.settings.freezeColumns = n >= 0 ? Math.min(n, 10) : 1; break; }
+        case 'count_columns': doc.settings.countColumns = value.split(/[,;]/).map(s => s.trim()).filter(Boolean); break;
         case 'track_updated': doc.settings.trackUpdated = yes(value); break;
         case 'track_author': doc.settings.trackAuthor = yes(value); break;
         case 'created': if (value) doc.settings.created = value; break;
@@ -86,7 +91,9 @@ const XlsxIO = (() => {
       ['author', doc.settings.author || ''],
       ['description', doc.settings.description || ''],
       ['main_column', doc.mainColumn],
-      ['chapter_prefix', doc.settings.chapterPrefix ? 'yes' : 'no'],
+      ['numbering', doc.settings.numbering === 'per-sheet' ? 'per-sheet' : 'continuous'],
+      ['freeze_columns', String(doc.settings.freezeColumns ?? 1)],
+      ['count_columns', (doc.settings.countColumns || []).join(', ')],
       ['track_updated', doc.settings.trackUpdated ? 'yes' : 'no'],
       ['track_author', doc.settings.trackAuthor ? 'yes' : 'no'],
       ['created', doc.settings.created || now],
@@ -243,7 +250,7 @@ const XlsxIO = (() => {
       doc.sheets.push(Model.newChapter('Chapter 1'));
     }
     Model.ensureMetaColumns(doc);
-    return { doc, sources, warnings };
+    return { doc, sources, warnings, hasSettings: !!sws };
   }
 
   function widthFor(col, doc) {
@@ -325,7 +332,8 @@ const XlsxIO = (() => {
       const hdr = ws.getRow(1);
       hdr.font = { bold: true };
       hdr.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE9E9E9' } };
-      ws.views = [{ state: 'frozen', ySplit: 1 }];
+      const xSplit = Math.max(0, Math.min(doc.settings.freezeColumns ?? 1, columns.length - 1));
+      ws.views = [{ state: 'frozen', xSplit, ySplit: 1 }];
       ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: columns.length } };
     }
     await writeSettings(wb, doc);

@@ -29,7 +29,9 @@ Drafting argument by argument in a spreadsheet is useful: you can reorder, annot
 
 ## Numbering
 
-Headings number as `1`, `1.1`, `1.1.1`. Body rows are numbered one level below the nearest heading, plus their indent: after heading `2.1`, a paragraph is `2.1.1` and a row indented under it is `2.1.1.1`. Inserting a heading above a paragraph pushes the paragraph down a level. Skipped levels are clamped and marked. With more than one chapter, the chapter index is prefixed (`2.1`, `2.1.1`), switchable in Settings.
+Heading levels are absolute: an h1 row is always one number (`1`, `2`, `3`), an h2 two (`2.1`), an h3 three (`2.1.1`). Body rows are numbered one level below the nearest heading, plus their indent: after heading `2.1`, a paragraph is `2.1.1` and a row indented under it is `2.1.1.1`. Inserting a heading above a paragraph pushes the paragraph down a level. Skipped levels are clamped and marked.
+
+Numbering continues from sheet to sheet by default, so sheets are containers rather than structure: one chapter per sheet starting with an h1 row gives chapters 1, 2, 3; several h1 rows in one sheet give the same; a chapter split over two sheets keeps counting. Settings can make every sheet restart at 1 instead.
 
 ## Keys
 
