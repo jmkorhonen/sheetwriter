@@ -1,0 +1,426 @@
+/* SheetWriter — document model and mutators. No DOM, no I/O.
+ *
+ * doc = {
+ *   version, mainColumn,
+ *   settings: {chapterPrefix, title, author, description, created, trackUpdated, trackAuthor, extra:{key:[value, description]}},
+ *   sheets: [
+ *     {name, kind:'chapter', columns:[...], rows:[{col: text, _id}]},
+ *     {name, kind:'data', cells:[[...]]}
+ *   ]
+ * }
+ * Reserved columns: "no" (computed numbering, written on save), "kind", "indent".
+ * Meta columns "updated" and "author" are maintained by the app when tracking is on.
+ */
+const Model = (() => {
+  const RESERVED = ['no', 'kind', 'indent'];
+  const META = ['updated', 'author'];
+  const KINDS = ['h1', 'h2', 'h3', 'h4', 'p', 's', 'x'];
+  const KIND_ORDER = ['h1', 'h2', 'h3', 'h4', 'p', 's']; // promote/demote ladder
+  const DEFAULT_COLUMNS = ['no', 'kind', 'indent', 'text', 'notes', 'sources'];
+
+  function normKind(k) {
+    k = String(k == null ? '' : k).trim().toLowerCase();
+    return KINDS.includes(k) ? k : 'p';
+  }
+  function isHeading(kind) { return /^h[1-6]$/.test(kind || ''); }
+  const indentOf = row => SheetNumbering.indentOf(row);
+
+  // Rows carry a private _id (never saved) so UI state such as "collapsed" survives moves and undo.
+  let nextId = 1;
+  function newId() { return nextId++; }
+  function ensureIds(doc) {
+    let max = 0;
+    for (const s of doc.sheets) if (s.kind === 'chapter') for (const r of s.rows) if (typeof r._id === 'number' && r._id > max) max = r._id;
+    nextId = Math.max(nextId, max + 1);
+    for (const s of doc.sheets) if (s.kind === 'chapter') for (const r of s.rows) if (typeof r._id !== 'number') r._id = newId();
+    return doc;
+  }
+  function emptyRow(columns, kind = 'p', indent = 0) {
+    const r = {};
+    for (const c of columns) r[c] = '';
+    r.kind = kind;
+    r.indent = indent ? String(indent) : '';
+    r._id = newId();
+    return r;
+  }
+
+  /** "# text" → h1 … "#### text" → h4. Returns {kind, text} or null. */
+  function detectKindPrefix(text) {
+    const m = /^(#{1,4})[ \t]+([\s\S]*)$/.exec(text);
+    if (m) return { kind: 'h' + m[1].length, text: m[2] };
+    return null;
+  }
+  /** Leading indent trigger (default three spaces) → {text} or null. */
+  function detectIndentPrefix(text, trigger) {
+    if (!trigger || !text.startsWith(trigger)) return null;
+    return { text: text.slice(trigger.length) };
+  }
+
+  /** Timestamp for the "updated" meta column: local "YYYY-MM-DD HH:MM". */
+  function stamp(d = new Date()) {
+    const p = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+  function isMeta(doc, col) {
+    return (col === 'updated' && !!doc.settings.trackUpdated) || (col === 'author' && !!doc.settings.trackAuthor);
+  }
+  /** Mark a row as edited: maintains updated/author when tracking is on. */
+  function touch(doc, sheet, row) {
+    if (doc.settings.trackUpdated) { if (!sheet.columns.includes('updated')) addColumnTo(sheet, 'updated'); row.updated = stamp(); }
+    if (doc.settings.trackAuthor) { if (!sheet.columns.includes('author')) addColumnTo(sheet, 'author'); row.author = doc.settings.author || ''; }
+  }
+  function addColumnTo(sheet, name, at) {
+    if (sheet.columns.includes(name)) return;
+    if (at == null) at = sheet.columns.length;
+    sheet.columns.splice(at, 0, name);
+    sheet.rows.forEach(r => { if (r[name] == null) r[name] = ''; });
+  }
+  /** Ensure meta columns exist on every chapter sheet when tracking is on. */
+  function ensureMetaColumns(doc) {
+    for (const s of doc.sheets) {
+      if (s.kind !== 'chapter') continue;
+      if (doc.settings.trackUpdated) addColumnTo(s, 'updated');
+      if (doc.settings.trackAuthor) addColumnTo(s, 'author');
+    }
+  }
+
+  /** End (exclusive) of the block a row owns: a heading owns rows up to the next heading of the
+   *  same or higher level; a body row owns deeper-indented rows, and a paragraph also owns the
+   *  "s" rows (same indent) that continue it. */
+  function sectionEnd(rows, i) {
+    const r = rows[i];
+    if (!r) return i + 1;
+    const level = SheetNumbering.headingLevel(r.kind);
+    const n = rows.length;
+    let j = i + 1;
+    if (level) {
+      while (j < n) { const l = SheetNumbering.headingLevel(rows[j].kind); if (l && l <= level) break; j++; }
+      return j;
+    }
+    const k = indentOf(r), kind = normKind(r.kind);
+    while (j < n) {
+      const rj = rows[j];
+      if (SheetNumbering.headingLevel(rj.kind)) break;
+      const kj = indentOf(rj);
+      if (kj > k) { j++; continue; }
+      if (kj === k && normKind(rj.kind) === 's' && kind !== 's') { j++; continue; }
+      break;
+    }
+    return j;
+  }
+  function isCollapsible(rows, i) { return sectionEnd(rows, i) > i + 1; }
+  /** [start, end) of the unit that moves with row i: always its whole block. */
+  function blockOf(rows, i) { return [i, sectionEnd(rows, i)]; }
+  /** Move `len` rows starting at `from` so they end up before the row originally at index `to`. Returns new start. */
+  function moveBlock(doc, si, from, len, to) {
+    const rows = doc.sheets[si].rows;
+    if (to >= from && to <= from + len) return from;
+    const block = rows.splice(from, len);
+    const t = to > from ? to - len : to;
+    rows.splice(t, 0, ...block);
+    return t;
+  }
+  /** Sibling-aware targets. Returns the `to` index for moveBlock, or null. */
+  function siblingMoveTarget(doc, si, i, dir) {
+    const rows = doc.sheets[si].rows;
+    const levels = numbering(doc, si).levels;
+    const [start, end] = blockOf(rows, i);
+    const my = levels[start];
+    if (dir < 0) {
+      for (let j = start - 1; j >= 0; j--) if (levels[j] <= my) return j; // previous sibling or parent
+      return null;
+    }
+    for (let j = end; j < rows.length; j++) {
+      if (levels[j] < my) return j + 1;                 // leaving the parent: become first child of the next parent
+      if (levels[j] === my) return sectionEnd(rows, j); // past the next sibling
+    }
+    return null;
+  }
+
+  function newChapter(name, columns = DEFAULT_COLUMNS) {
+    const cols = ensureReserved(columns.slice());
+    return { name, kind: 'chapter', columns: cols, rows: [emptyRow(cols)] };
+  }
+  function ensureReserved(columns) {
+    if (!columns.includes('indent')) { const k = columns.indexOf('kind'); columns.splice(k >= 0 ? k + 1 : 0, 0, 'indent'); }
+    if (!columns.includes('kind')) columns.unshift('kind');
+    if (!columns.includes('no')) columns.unshift('no');
+    return columns;
+  }
+  function newDoc() {
+    return {
+      version: 1,
+      mainColumn: 'text',
+      settings: { chapterPrefix: true, title: '', author: '', description: '', created: new Date().toISOString(), trackUpdated: false, trackAuthor: false, extra: {} },
+      sheets: [newChapter('Chapter 1')],
+    };
+  }
+
+  // ---- queries ----
+  function chapterSheets(doc) { return doc.sheets.filter(s => s.kind === 'chapter'); }
+  function chapterIndex(doc, si) {
+    let n = 0;
+    for (let i = 0; i <= si; i++) if (doc.sheets[i].kind === 'chapter') n++;
+    return n;
+  }
+  function prefixFor(doc, si) {
+    if (!doc.settings.chapterPrefix) return null;
+    if (chapterSheets(doc).length < 2) return null;
+    return chapterIndex(doc, si);
+  }
+  function numbering(doc, si) {
+    const s = doc.sheets[si];
+    if (!s || s.kind !== 'chapter') return { numbers: [], warnings: [], levels: [], indents: [] };
+    return SheetNumbering.compute(s.rows, { prefix: prefixFor(doc, si) });
+  }
+  function userColumns(doc, sheet) { return sheet.columns.filter(c => !RESERVED.includes(c) && !isMeta(doc, c)); }
+  function sideColumns(doc, sheet) { return userColumns(doc, sheet).filter(c => c !== doc.mainColumn); }
+  function rowIsEmpty(doc, sheet, row) { return userColumns(doc, sheet).every(c => !String(row[c] || '').trim()); }
+  function wordCount(text) {
+    const t = String(text || '').trim();
+    return t ? t.split(/\s+/).length : 0;
+  }
+  function charCount(text) { return String(text || '').length; }
+  /** Counts over the main column, excluding "x" rows: {rows, words, chars} */
+  function sheetCounts(doc, sheet) {
+    const c = { rows: 0, words: 0, chars: 0 };
+    if (sheet.kind !== 'chapter') return c;
+    for (const r of sheet.rows) {
+      if (normKind(r.kind) === 'x') continue;
+      c.rows++; c.words += wordCount(r[doc.mainColumn]); c.chars += charCount(r[doc.mainColumn]);
+    }
+    return c;
+  }
+  function docCounts(doc) {
+    const t = { rows: 0, words: 0, chars: 0 };
+    for (const s of doc.sheets) { const c = sheetCounts(doc, s); t.rows += c.rows; t.words += c.words; t.chars += c.chars; }
+    return t;
+  }
+  function sheetWords(doc, sheet) { return sheetCounts(doc, sheet).words; }
+  function docWords(doc) { return docCounts(doc).words; }
+  /** File-name-safe version of a title. */
+  function safeFileName(title) {
+    return String(title || '').normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').slice(0, 80);
+  }
+
+  // ---- row mutators (si = sheet index) ----
+  function addRow(doc, si, at, kind = 'p', indent = 0) {
+    const s = doc.sheets[si];
+    at = Math.max(0, Math.min(at, s.rows.length));
+    const r = emptyRow(s.columns, kind, indent);
+    s.rows.splice(at, 0, r);
+    touch(doc, s, r);
+    return at;
+  }
+  function deleteRow(doc, si, i) {
+    const s = doc.sheets[si];
+    s.rows.splice(i, 1);
+    if (!s.rows.length) s.rows.push(emptyRow(s.columns));
+  }
+  function moveRow(doc, si, from, to) {
+    const s = doc.sheets[si];
+    if (from === to || from < 0 || from >= s.rows.length) return from;
+    to = Math.max(0, Math.min(to, s.rows.length - 1));
+    const [r] = s.rows.splice(from, 1);
+    s.rows.splice(to, 0, r);
+    return to;
+  }
+  function duplicateRow(doc, si, i) {
+    const s = doc.sheets[si];
+    const r = { ...s.rows[i], _id: newId() };
+    s.rows.splice(i + 1, 0, r);
+    touch(doc, s, r);
+    return i + 1;
+  }
+  function splitRow(doc, si, i, caret) {
+    const s = doc.sheets[si], main = doc.mainColumn;
+    const row = s.rows[i];
+    const text = row[main] || '';
+    const a = text.slice(0, caret), b = text.slice(caret);
+    row[main] = a.replace(/\s+$/, '');
+    const nr = emptyRow(s.columns, isHeading(row.kind) ? 'p' : row.kind, isHeading(row.kind) ? 0 : indentOf(row));
+    nr[main] = b.replace(/^\s+/, '');
+    s.rows.splice(i + 1, 0, nr);
+    touch(doc, s, row); touch(doc, s, nr);
+    return i + 1;
+  }
+  function mergeRow(doc, si, i) {
+    const s = doc.sheets[si], main = doc.mainColumn;
+    if (i + 1 >= s.rows.length) return null;
+    const a = s.rows[i], b = s.rows[i + 1];
+    const caret = (a[main] || '').length;
+    for (const c of s.columns) {
+      if (RESERVED.includes(c) || isMeta(doc, c)) continue;
+      const av = a[c] || '', bv = b[c] || '';
+      if (!bv) continue;
+      a[c] = av ? (c === main ? av + ' ' + bv : av + '\n' + bv) : bv;
+    }
+    s.rows.splice(i + 1, 1);
+    touch(doc, s, a);
+    return caret;
+  }
+  function setCell(doc, si, i, col, val) {
+    const s = doc.sheets[si];
+    if (!s.rows[i]) return;
+    const row = s.rows[i];
+    const v = col === 'kind' ? normKind(val) : String(val);
+    if (row[col] === v) return;
+    row[col] = v;
+    if (col === 'kind' && isHeading(v)) row.indent = '';
+    touch(doc, s, row);
+  }
+  function setIndent(doc, si, i, indent) {
+    const s = doc.sheets[si]; const row = s.rows[i];
+    if (!row || isHeading(row.kind)) return false;
+    indent = Math.max(0, Math.min(8, indent | 0));
+    const v = indent ? String(indent) : '';
+    if (row.indent === v) return false;
+    row.indent = v;
+    touch(doc, s, row);
+    return true;
+  }
+  /** Indent/outdent a row together with its block (children move with it). */
+  function shiftIndent(doc, si, i, dir) {
+    const s = doc.sheets[si]; const rows = s.rows;
+    const row = rows[i];
+    if (!row || isHeading(row.kind)) return false;
+    const cur = indentOf(row);
+    if (dir < 0 && cur === 0) return false;
+    const [start, end] = blockOf(rows, i);
+    for (let k = start; k < end; k++) {
+      if (isHeading(rows[k].kind)) continue;
+      const v = Math.max(0, indentOf(rows[k]) + dir);
+      rows[k].indent = v ? String(v) : '';
+    }
+    touch(doc, s, row);
+    return true;
+  }
+  function cycleKind(doc, si, i, dir = 1) {
+    const s = doc.sheets[si]; const row = s.rows[i];
+    const order = ['p', 'h1', 'h2', 'h3', 'h4', 's', 'x'];
+    const k = order.indexOf(normKind(row.kind));
+    row.kind = order[(k + dir + order.length) % order.length];
+    if (isHeading(row.kind)) row.indent = '';
+    touch(doc, s, row);
+  }
+  /** dir -1 = promote (towards h1), +1 = demote (towards s) */
+  function shiftKind(doc, si, i, dir) {
+    const s = doc.sheets[si]; const row = s.rows[i];
+    const cur = normKind(row.kind);
+    let k = KIND_ORDER.indexOf(cur);
+    if (k < 0) k = KIND_ORDER.indexOf('p') - dir; // x → p either way
+    k = Math.max(0, Math.min(KIND_ORDER.length - 1, k + dir));
+    row.kind = KIND_ORDER[k];
+    if (isHeading(row.kind)) row.indent = '';
+    touch(doc, s, row);
+  }
+
+  // ---- column mutators ----
+  function validColumnName(sheet, name, allowExisting) {
+    name = String(name || '').trim();
+    if (!name) return { ok: false, reason: 'Column name is empty.' };
+    if (RESERVED.includes(name.toLowerCase())) return { ok: false, reason: `"${name}" is reserved.` };
+    if (!allowExisting && sheet.columns.some(c => c.toLowerCase() === name.toLowerCase())) return { ok: false, reason: `Column "${name}" already exists.` };
+    return { ok: true, name };
+  }
+  function addColumn(doc, si, name, at) { addColumnTo(doc.sheets[si], name, at); }
+  function renameColumn(doc, si, oldName, newName) {
+    const s = doc.sheets[si];
+    const k = s.columns.indexOf(oldName);
+    if (k < 0 || oldName === newName) return;
+    s.columns[k] = newName;
+    s.rows.forEach(r => { r[newName] = r[oldName] || ''; delete r[oldName]; });
+    if (oldName === doc.mainColumn) setMainColumn(doc, newName, oldName);
+  }
+  function deleteColumn(doc, si, name) {
+    const s = doc.sheets[si];
+    if (RESERVED.includes(name) || name === doc.mainColumn) return;
+    s.columns = s.columns.filter(c => c !== name);
+    s.rows.forEach(r => { delete r[name]; });
+  }
+  function moveColumn(doc, si, name, dir) {
+    const s = doc.sheets[si];
+    const k = s.columns.indexOf(name);
+    const j = k + dir;
+    if (k < 0 || j < 0 || j >= s.columns.length) return;
+    [s.columns[k], s.columns[j]] = [s.columns[j], s.columns[k]];
+  }
+  /** Change the main column name across all chapter sheets. */
+  function setMainColumn(doc, newName, oldName = doc.mainColumn) {
+    doc.mainColumn = newName;
+    for (const s of doc.sheets) {
+      if (s.kind !== 'chapter') continue;
+      if (s.columns.includes(newName)) continue;
+      const k = s.columns.indexOf(oldName);
+      if (k >= 0) {
+        s.columns[k] = newName;
+        s.rows.forEach(r => { r[newName] = r[oldName] || ''; delete r[oldName]; });
+      } else {
+        s.columns.push(newName);
+        s.rows.forEach(r => { r[newName] = ''; });
+      }
+    }
+  }
+
+  // ---- sheet mutators ----
+  function addSheet(doc, name, at, columns) {
+    if (at == null) at = doc.sheets.length;
+    const template = columns || (doc.sheets.find(s => s.kind === 'chapter') || {}).columns || DEFAULT_COLUMNS;
+    const cols = template.slice();
+    if (!cols.includes(doc.mainColumn)) cols.push(doc.mainColumn);
+    const s = newChapter(uniqueSheetName(doc, name), cols);
+    doc.sheets.splice(at, 0, s);
+    return at;
+  }
+  function uniqueSheetName(doc, name) {
+    name = String(name || 'Chapter').trim() || 'Chapter';
+    let n = name, k = 2;
+    while (doc.sheets.some(s => s.name.toLowerCase() === n.toLowerCase())) n = `${name} ${k++}`;
+    return n;
+  }
+  function renameSheet(doc, si, name) {
+    name = String(name || '').trim();
+    if (!name) return false;
+    if (doc.sheets.some((s, i) => i !== si && s.name.toLowerCase() === name.toLowerCase())) return false;
+    doc.sheets[si].name = name;
+    return true;
+  }
+  function deleteSheet(doc, si) {
+    doc.sheets.splice(si, 1);
+    if (!doc.sheets.length) doc.sheets.push(newChapter('Chapter 1'));
+  }
+  function moveSheet(doc, from, to) {
+    if (from === to) return from;
+    to = Math.max(0, Math.min(to, doc.sheets.length - 1));
+    const [s] = doc.sheets.splice(from, 1);
+    doc.sheets.splice(to, 0, s);
+    return to;
+  }
+  /** Move rows (by index) from sheet si to the end (or `at`) of sheet ti. Returns new index of first moved row. */
+  function moveRowsToSheet(doc, si, idxs, ti, at) {
+    const src = doc.sheets[si], dst = doc.sheets[ti];
+    if (!src || !dst || src === dst || dst.kind !== 'chapter') return null;
+    idxs = [...new Set(idxs)].sort((a, b) => a - b);
+    const moved = idxs.map(i => src.rows[i]);
+    for (let k = idxs.length - 1; k >= 0; k--) src.rows.splice(idxs[k], 1);
+    if (!src.rows.length) src.rows.push(emptyRow(src.columns));
+    for (const r of moved) for (const c of Object.keys(r)) if (!c.startsWith('_') && !dst.columns.includes(c) && r[c]) addColumnTo(dst, c);
+    for (const r of moved) for (const c of dst.columns) if (r[c] == null) r[c] = '';
+    if (at == null) at = dst.rows.length;
+    if (dst.rows.length === 1 && rowIsEmpty(doc, dst, dst.rows[0])) { dst.rows.length = 0; at = 0; }
+    dst.rows.splice(at, 0, ...moved);
+    return at;
+  }
+
+  return {
+    RESERVED, META, KINDS, DEFAULT_COLUMNS, normKind, isHeading, indentOf, emptyRow, newChapter, newDoc, ensureIds, newId,
+    detectKindPrefix, detectIndentPrefix, stamp, isMeta, touch, ensureMetaColumns,
+    sectionEnd, isCollapsible, blockOf, moveBlock, siblingMoveTarget,
+    chapterSheets, chapterIndex, prefixFor, numbering, userColumns, sideColumns, rowIsEmpty,
+    wordCount, charCount, sheetCounts, docCounts, sheetWords, docWords, safeFileName,
+    addRow, deleteRow, moveRow, duplicateRow, splitRow, mergeRow, setCell, setIndent, shiftIndent, cycleKind, shiftKind,
+    validColumnName, addColumn, renameColumn, deleteColumn, moveColumn, setMainColumn,
+    addSheet, renameSheet, deleteSheet, moveSheet, moveRowsToSheet, uniqueSheetName,
+  };
+})();
+if (typeof module !== 'undefined') module.exports = Model;

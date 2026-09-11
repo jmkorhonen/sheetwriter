@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SheetWriter tests</title>
+<style>
+  body { font: 14px/1.5 system-ui, sans-serif; margin: 24px; }
+  .pass { color: #1a7f37; } .fail { color: #c0392b; font-weight: 600; }
+  pre { background: #f6f6f6; padding: 8px; overflow: auto; }
+</style>
+</head>
+<body>
+<h1>SheetWriter tests</h1>
+<div id="out"></div>
+<script src="src/timers.js"></script>
+<script src="vendor/exceljs.min.js"></script>
+<script src="vendor/marked.min.js"></script>
+<script src="src/version.js"></script>
+<script src="src/numbering.js"></script>
+<script src="src/md.js"></script>
+<script src="src/model.js"></script>
+<script src="src/exporter.js"></script>
+<script src="src/xlsxio.js"></script>
+<script>
+const tests = [];
+const test = (name, fn) => tests.push({ name, fn });
+const eq = (a, b, msg) => { const sa = JSON.stringify(a), sb = JSON.stringify(b); if (sa !== sb) throw new Error((msg ? msg + ': ' : '') + 'expected ' + sb + ' got ' + sa); };
+const ok = (v, msg) => { if (!v) throw new Error(msg || 'expected truthy'); };
+const rows = (...kinds) => kinds.map(k => (k && typeof k === 'object') ? k : { kind: k });
+const nums = (r, o) => SheetNumbering.compute(r, o).numbers;
+
+// ---- numbering ----
+test('numbering: heading then body', () => eq(nums(rows('h1', 'p', 'p')), ['1', '1.1', '1.2']));
+test('numbering: inserted h2 pushes body down a level', () => eq(nums(rows('h1', 'h2', 'p', 'p')), ['1', '1.1', '1.1.1', '1.1.2']));
+test('numbering: body before any heading is level 1', () => eq(nums(rows('p', 'p', 'h1', 'p')), ['1', '2', '3', '3.1']));
+test('numbering: headings and body share counters', () => eq(nums(rows('h1', 'p', 'p', 'h2', 'p', 'h1', 'p')), ['1', '1.1', '1.2', '1.3', '1.3.1', '2', '2.1']));
+test('numbering: skipped level is clamped and flagged', () => {
+  const r = SheetNumbering.compute(rows('h1', 'h3', 'p'));
+  eq(r.numbers, ['1', '1.1', '1.1.1']); eq(r.warnings, [false, true, false]);
+});
+test('numbering: chapter prefix', () => eq(nums(rows('h1', 'p', 's', 'x'), { prefix: 2 }), ['2.1', '2.1.1', '2.1.2', '2.1.3']));
+test('numbering: empty kind counts as body', () => eq(nums(rows('h1', '', undefined)), ['1', '1.1', '1.2']));
+test('numbering: indent adds levels below the paragraph', () => {
+  const r = rows('h2', { kind: 'p' }, { kind: 'p', indent: '1' }, { kind: 'p', indent: '2' }, { kind: 'p', indent: '1' }, { kind: 'p' }, 'h1', { kind: 'p', indent: '1' });
+  const n = SheetNumbering.compute(r, { prefix: 2 });
+  eq(n.numbers, ['2.1', '2.1.1', '2.1.1.1', '2.1.1.1.1', '2.1.1.2', '2.1.2', '2.2', '2.2.1']);
+  eq(n.warnings[7], true, 'indent right after a heading is clamped to 0');
+  eq(n.indents, [0, 0, 1, 2, 1, 0, 0, 0]);
+});
+
+// ---- model ----
+function sampleDoc() {
+  const doc = Model.newDoc();
+  doc.sheets = [];
+  const s1 = Model.newChapter('Intro', ['no', 'kind', 'text', 'notes', 'sources']);
+  s1.rows = [
+    { no: '', kind: 'h1', text: 'Why rows', notes: '', sources: '' },
+    { no: '', kind: 'p', text: 'First argument with **bold**.', notes: 'check', sources: 'Smith 2020' },
+    { no: '', kind: 's', text: 'Second sentence of the same paragraph.', notes: '', sources: 'Jones 2021' },
+    { no: '', kind: 'x', text: 'Parked idea', notes: '', sources: '' },
+    { no: '', kind: 'p', text: 'Ääkköset ja ö toimivat.', notes: '', sources: '' },
+    { no: '', kind: 'p', text: '=SUM(A1) is text, not a formula', notes: '-5 % growth', sources: '' },
+  ];
+  const s2 = Model.newChapter('Body', ['no', 'kind', 'text', 'notes', 'sources']);
+  s2.rows = [
+    { no: '', kind: 'h2', text: 'Skipped level', notes: '', sources: '' },
+    { no: '', kind: 'p', text: 'Under it.', notes: '', sources: '' },
+  ];
+  doc.sheets.push(s1, s2);
+  doc.settings.title = 'Test workbook: draft/1'; doc.settings.author = 'Tester';
+  doc.settings.extra = { custom_key: ['custom value', 'kept by the app'] };
+  return Model.ensureIds(doc);
+}
+test('model: split and merge round trip', () => {
+  const doc = sampleDoc();
+  Model.splitRow(doc, 0, 1, 6);
+  eq(doc.sheets[0].rows[1].text, 'First'); eq(doc.sheets[0].rows[2].text, 'argument with **bold**.'); eq(doc.sheets[0].rows[2].kind, 'p');
+  const caret = Model.mergeRow(doc, 0, 1);
+  eq(caret, 5); eq(doc.sheets[0].rows[1].text, 'First argument with **bold**.');
+});
+test('model: split a heading gives a paragraph', () => {
+  const doc = sampleDoc(); Model.splitRow(doc, 0, 0, 3); eq(doc.sheets[0].rows[1].kind, 'p');
+});
+test('model: move rows to another sheet adds missing columns, never _id', () => {
+  const doc = sampleDoc();
+  Model.addColumn(doc, 0, 'examples'); doc.sheets[0].rows[1].examples = 'ex';
+  Model.moveRowsToSheet(doc, 0, [1], 1);
+  ok(doc.sheets[1].columns.includes('examples'), 'examples column added');
+  ok(!doc.sheets[1].columns.includes('_id'));
+  eq(doc.sheets[1].rows[2].text, 'First argument with **bold**.');
+  eq(doc.sheets[0].rows.length, 5);
+});
+test('model: rename main column follows across sheets', () => {
+  const doc = sampleDoc(); Model.renameColumn(doc, 0, 'text', 'body');
+  eq(doc.mainColumn, 'body'); ok(doc.sheets[1].columns.includes('body')); eq(doc.sheets[1].rows[0].body, 'Skipped level');
+});
+test('model: shiftKind ladder', () => {
+  const doc = sampleDoc(); Model.shiftKind(doc, 0, 1, -1); eq(doc.sheets[0].rows[1].kind, 'h4');
+  Model.shiftKind(doc, 0, 3, -1); eq(doc.sheets[0].rows[3].kind, 'p', 'x promotes to p');
+});
+test('model: numbering with two chapters uses prefix', () => {
+  const doc = sampleDoc(); eq(Model.numbering(doc, 1).numbers, ['2.1', '2.1.1']);
+  doc.settings.chapterPrefix = false; eq(Model.numbering(doc, 1).numbers, ['1', '1.1']);
+});
+test('model: Markdown and indent prefixes', () => {
+  eq(Model.detectKindPrefix('# Title'), { kind: 'h1', text: 'Title' });
+  eq(Model.detectKindPrefix('### Deep'), { kind: 'h3', text: 'Deep' });
+  eq(Model.detectKindPrefix('#hashtag'), null);
+  eq(Model.detectKindPrefix('- list'), null, 'dash no longer changes the kind');
+  eq(Model.detectIndentPrefix('   sub', '   '), { text: 'sub' });
+  eq(Model.detectIndentPrefix('  sub', '   '), null);
+  eq(Model.detectIndentPrefix('   sub', ''), null, 'trigger off');
+});
+test('model: sectionEnd with indent and s rows', () => {
+  const r = rows('h1', 'p', 's', { kind: 'p', indent: '1' }, { kind: 's', indent: '1' }, { kind: 'p', indent: '2' }, 'p', 'h2', 'p', 'h1', 'p');
+  eq([0, 1, 3, 5, 6, 7, 9].map(i => Model.sectionEnd(r, i)), [9, 6, 6, 6, 7, 9, 11]);
+  Model.ensureIds({ sheets: [{ kind: 'chapter', rows: r }] });
+  eq(Model.blockOf(r, 1), [1, 6]); eq(Model.blockOf(r, 6), [6, 7]);
+});
+test('model: indent/outdent moves the block and headings ignore it', () => {
+  const doc = sampleDoc(); const s = doc.sheets[0];
+  ok(Model.shiftIndent(doc, 0, 1, 1)); eq(s.rows[1].indent, '1'); eq(s.rows[2].indent, '1', 's row follows its paragraph');
+  ok(!Model.shiftIndent(doc, 0, 0, 1), 'heading cannot indent');
+  ok(Model.shiftIndent(doc, 0, 1, -1)); eq(s.rows[1].indent, ''); eq(s.rows[2].indent, '');
+  Model.setIndent(doc, 0, 4, 2); Model.setCell(doc, 0, 4, 'kind', 'h2'); eq(s.rows[4].indent, '', 'becoming a heading clears indent');
+});
+test('model: moveBlock keeps order semantics', () => {
+  const mk = () => ({ sheets: [{ kind: 'chapter', rows: ['a', 'b', 'c', 'd', 'e'].map(t => ({ kind: 'p', text: t })) }] });
+  let d = mk(); eq(Model.moveBlock(d, 0, 1, 2, 4), 2); eq(d.sheets[0].rows.map(r => r.text), ['a', 'd', 'b', 'c', 'e']);
+  d = mk(); eq(Model.moveBlock(d, 0, 3, 1, 0), 0); eq(d.sheets[0].rows.map(r => r.text), ['d', 'a', 'b', 'c', 'e']);
+  d = mk(); eq(Model.moveBlock(d, 0, 1, 2, 5), 3); eq(d.sheets[0].rows.map(r => r.text), ['a', 'd', 'e', 'b', 'c']);
+  d = mk(); eq(Model.moveBlock(d, 0, 1, 2, 2), 1, 'drop inside own block is a no-op');
+});
+test('model: sibling-aware move targets', () => {
+  const doc = Model.newDoc(); const s = doc.sheets[0];
+  const mk = (kind, text, indent = '') => ({ ...Model.emptyRow(s.columns, kind), text, indent });
+  s.rows = [mk('h1', 'A'), mk('p', 'a1'), mk('p', 'a2'), mk('p', 'a2x', '1'), mk('h1', 'B'), mk('p', 'b1'), mk('h1', 'C')];
+  // move section A down: past sibling B (with its children) -> before C
+  eq(Model.siblingMoveTarget(doc, 0, 0, 1), 6);
+  // a2 (with child a2x) up: before a1
+  eq(Model.siblingMoveTarget(doc, 0, 2, -1), 1);
+  // a1 up: previous row with level <= 2 is heading A (level 1) -> before A (leaves the section)
+  eq(Model.siblingMoveTarget(doc, 0, 1, -1), 0);
+  // a2 down: next row with level <= 2 is heading B (level 1) -> first child of B (index 5)
+  eq(Model.siblingMoveTarget(doc, 0, 2, 1), 5);
+  // C down: nothing after -> null
+  eq(Model.siblingMoveTarget(doc, 0, 6, 1), null);
+  // apply: move a2 block down
+  const to = Model.siblingMoveTarget(doc, 0, 2, 1); Model.moveBlock(doc, 0, 2, 2, to);
+  eq(s.rows.map(r => r.text), ['A', 'a1', 'B', 'a2', 'a2x', 'b1', 'C']);
+});
+test('model: meta columns and touch', () => {
+  const doc = sampleDoc(); doc.settings.trackUpdated = true; doc.settings.trackAuthor = true; Model.ensureMetaColumns(doc);
+  ok(doc.sheets[0].columns.includes('updated') && doc.sheets[1].columns.includes('author'));
+  Model.setCell(doc, 0, 1, 'text', 'edited');
+  ok(/^\d{4}-\d\d-\d\d \d\d:\d\d$/.test(doc.sheets[0].rows[1].updated), 'stamp format'); eq(doc.sheets[0].rows[1].author, 'Tester');
+  eq(doc.sheets[0].rows[2].updated, '', 'untouched rows stay empty');
+  ok(!Model.sideColumns(doc, doc.sheets[0]).includes('updated'), 'meta not a side column');
+  doc.settings.trackUpdated = false; ok(Model.sideColumns(doc, doc.sheets[0]).includes('updated'), 'plain column when tracking is off');
+});
+test('model: counts, safe file name, empty rows', () => {
+  const d = sampleDoc();
+  const c = Model.sheetCounts(d, d.sheets[0]); eq(c.rows, 5); eq(c.words, 2 + 4 + 6 + 4 + 6);
+  eq(Model.safeFileName('Test workbook: draft/1 — ääkköset!'), 'Test-workbook-draft1-aakkoset');
+  ok(Model.rowIsEmpty(d, d.sheets[0], Model.emptyRow(d.sheets[0].columns, 'h1')));
+  ok(!Model.rowIsEmpty(d, d.sheets[0], d.sheets[0].rows[1]));
+});
+
+// ---- export ----
+test('export: headings, s joins, x omitted, sheet titles', () => {
+  const md = Exporter.toMarkdown(sampleDoc(), { scope: 'all' });
+  eq(md, '# Intro\n\n## Why rows\n\nFirst argument with **bold**. Second sentence of the same paragraph.\n\nÄäkköset ja ö toimivat.\n\n=SUM(A1) is text, not a formula\n\n# Body\n\n### Skipped level\n\nUnder it.\n');
+});
+test('export: numbering headings only vs all, "# " in a heading cell is not doubled', () => {
+  const doc = sampleDoc(); doc.sheets[0].rows[0].text = '# Why rows';
+  const h = Exporter.toMarkdown(doc, { scope: 0, numbering: 'headings', sheetTitles: false });
+  ok(h.startsWith('# 1.1 Why rows\n\nFirst argument'), h);
+  const a = Exporter.toMarkdown(doc, { scope: 0, numbering: 'all', sheetTitles: false });
+  ok(a.startsWith('# 1.1 Why rows\n\n1.1.1 First argument'), a);
+});
+test('export: indented rows as paragraphs or nested lists', () => {
+  const doc = sampleDoc(); const s = doc.sheets[0];
+  s.rows[4].indent = '1'; s.rows[5].indent = '2';
+  const p = Exporter.toMarkdown(doc, { scope: 0, sheetTitles: false });
+  ok(p.includes('paragraph.\n\nÄäkköset ja ö toimivat.\n\n=SUM'), p);
+  const l = Exporter.toMarkdown(doc, { scope: 0, sheetTitles: false, indented: 'lists' });
+  ok(l.includes('paragraph.\n\n- Ääkköset ja ö toimivat.\n  - =SUM(A1)'), l);
+});
+test('export: by column with side blockquote and comment', () => {
+  const md = Exporter.toMarkdown(sampleDoc(), { scope: 0, sheetTitles: false, side: { column: 'sources', mode: 'quote' } });
+  ok(md.includes('> **sources:** Smith 2020\n> Jones 2021'), md);
+  const md2 = Exporter.toMarkdown(sampleDoc(), { scope: 0, column: 'notes', sheetTitles: false });
+  eq(md2, '# Why rows\n\ncheck\n\n-5 % growth\n');
+  const md3 = Exporter.toMarkdown(sampleDoc(), { scope: 0, sheetTitles: false, side: { column: 'notes', mode: 'comment' } });
+  ok(md3.includes('<!-- notes: check -->'), md3);
+});
+
+// ---- markdown ----
+test('md: raw html is escaped, links restricted, lists render', () => {
+  const tag = '<scr' + 'ipt>';
+  const h = MD.render(tag + 'x</scr' + 'ipt> **b** [j](javascript:alert(1)) [ok](https://a.b)');
+  ok(!h.includes(tag), 'no script tag'); ok(h.includes('<strong>b</strong>'));
+  ok(h.includes('href="#"'), 'javascript link neutralised'); ok(h.includes('href="https://a.b"'));
+  ok(MD.render('Intro\n- a\n- b').includes('<li>a</li>'), 'list after a line');
+  ok(MD.render('- a\n- b').startsWith('<ul>'), 'list at the start of a cell');
+});
+
+// ---- xlsx ----
+test('xlsx: sortByNo restores order, rows without a number go last', () => {
+  const r = XlsxIO.sortByNo([{ no: '1.2', t: 'c' }, { no: '', t: 'new1' }, { no: '1.10', t: 'e' }, { no: '1', t: 'a' }, { no: '1.1', t: 'b' }, { no: 'x', t: 'new2' }, { no: '1.2.1', t: 'd' }]);
+  eq(r.map(x => x.t), ['a', 'b', 'c', 'd', 'e', 'new1', 'new2']);
+});
+test('xlsx: save then load preserves rows, columns, settings, order; meta columns last', async () => {
+  const doc = sampleDoc(); doc.settings.trackUpdated = true; Model.ensureMetaColumns(doc);
+  Model.moveColumn(doc, 0, 'updated', -1); // put it before "sources" in the model; the file must still end with it
+  doc.sheets[0].rows[4].indent = '1';
+  const buf = await XlsxIO.save(doc, new Map());
+  const { doc: d2, warnings } = await XlsxIO.load(buf);
+  eq(warnings, []);
+  eq(d2.sheets.map(s => s.name), ['Intro', 'Body']);
+  eq(d2.sheets[0].columns, ['no', 'kind', 'indent', 'text', 'notes', 'sources', 'updated']);
+  eq(d2.sheets[0].rows.map(r => r.text), doc.sheets[0].rows.map(r => r.text));
+  eq(d2.sheets[0].rows.map(r => r.kind), ['h1', 'p', 's', 'x', 'p', 'p']);
+  eq(d2.sheets[0].rows[4].indent, '1');
+  eq(d2.sheets[0].rows[1].sources, 'Smith 2020');
+  eq(d2.mainColumn, 'text'); eq(d2.settings.title, 'Test workbook: draft/1'); eq(d2.settings.author, 'Tester');
+  eq(d2.settings.chapterPrefix, true); eq(d2.settings.trackUpdated, true); eq(d2.settings.trackAuthor, false);
+  eq(d2.settings.extra, { custom_key: ['custom value', 'kept by the app'] });
+  const wb = new ExcelJS.Workbook(); await wb.xlsx.load(buf);
+  const ws = wb.getWorksheet('Intro');
+  eq(XlsxIO.cellText(ws.getRow(3).getCell(1).value), '1.1.1', 'two chapters, so numbering carries the chapter prefix');
+  eq(XlsxIO.cellText(ws.getRow(7).getCell(4).value), '=SUM(A1) is text, not a formula');
+  const sws = wb.getWorksheet('_sheetwriter'); ok(sws, 'settings sheet exists');
+  const keys = []; sws.eachRow(r => keys.push(XlsxIO.cellText(r.getCell(1).value)));
+  ok(keys.includes('repo') && keys.includes('download') && keys.includes('track_updated'), keys.join(','));
+  ok(ws.views && ws.views[0].state === 'frozen', 'header frozen');
+});
+test('xlsx: Excel-edited chapter: sorted by another column, new rows without no/kind', async () => {
+  const wb = new ExcelJS.Workbook();
+  const ch = wb.addWorksheet('Essay');
+  ch.addRow(['no', 'Text', 'Kind', 'Notes']);
+  ch.addRow(['1.2', 'Second', 'p', '']);
+  ch.addRow(['', 'Added in Excel', '', 'n']);
+  ch.addRow(['1', 'Title row', 'H1', '']);
+  ch.addRow(['1.1', 'First', '', 'n1']);
+  ch.addRow(['', '', '', '']); // blank row: dropped
+  ch.addRow(['1.3', { richText: [{ text: 'rich ' }, { text: 'text', font: { bold: true } }] }, 'p', 42]);
+  const data = wb.addWorksheet('Sources');
+  data.addRow(['id', 'ref']); data.addRow([1, 'Smith 2020']); data.getCell('A1').font = { bold: true };
+  data.getColumn(2).width = 40;
+  const buf = await wb.xlsx.writeBuffer();
+  const { doc, sources } = await XlsxIO.load(buf);
+  eq(doc.sheets.map(s => s.kind), ['chapter', 'data']);
+  eq(doc.sheets[0].columns, ['no', 'Text', 'kind', 'indent', 'Notes'], 'existing columns keep their order; missing ones are added');
+  eq(doc.sheets[0].rows.map(r => r.Text), ['Title row', 'First', 'Second', 'rich text', 'Added in Excel']);
+  eq(doc.sheets[0].rows.map(r => r.kind), ['h1', 'p', 'p', 'p', 'p']);
+  eq(doc.sheets[0].rows[3].Notes, '42');
+  eq(doc.mainColumn, 'Text');
+  const buf2 = await XlsxIO.save(doc, sources);
+  const wb2 = new ExcelJS.Workbook(); await wb2.xlsx.load(buf2);
+  const d2 = wb2.getWorksheet('Sources');
+  eq(XlsxIO.cellText(d2.getRow(2).getCell(2).value), 'Smith 2020');
+  ok(d2.getCell('A1').font && d2.getCell('A1').font.bold, 'style kept on data sheet');
+  eq(d2.getColumn(2).width, 40);
+  const { doc: d3 } = await XlsxIO.load(buf2);
+  eq(d3.sheets[0].rows.map(r => r.Text), ['Title row', 'First', 'Second', 'rich text', 'Added in Excel']);
+});
+test('xlsx: plain spreadsheet without a text column is imported by its longest column', async () => {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Arguments');
+  ws.addRow(['id', 'Argument', 'Src']);
+  ws.addRow([1, 'The first long argument text', 'A']);
+  ws.addRow([2, 'The second long argument text', 'B']);
+  const buf = await wb.xlsx.writeBuffer();
+  const { doc, warnings } = await XlsxIO.load(buf);
+  eq(doc.mainColumn, 'Argument'); eq(doc.sheets[0].kind, 'chapter'); eq(doc.sheets[0].rows.length, 2);
+  eq(doc.sheets[0].columns, ['no', 'kind', 'indent', 'id', 'Argument', 'Src']);
+  ok(warnings.length === 1 && /Argument/.test(warnings[0]), warnings.join('|'));
+});
+test('xlsx: empty rows are not written', async () => {
+  const doc = sampleDoc(); doc.sheets[0].rows.splice(2, 0, Model.emptyRow(doc.sheets[0].columns, 'h2'));
+  const { doc: d2 } = await XlsxIO.load(await XlsxIO.save(doc, new Map()));
+  eq(d2.sheets[0].rows.length, 6);
+});
+
+(async () => {
+  const out = document.getElementById('out');
+  const results = [];
+  for (const t of tests) {
+    const div = document.createElement('div');
+    try { await t.fn(); div.className = 'pass'; div.textContent = '✓ ' + t.name; results.push({ name: t.name, ok: true }); }
+    catch (e) { div.className = 'fail'; div.textContent = '✗ ' + t.name + ' — ' + (e && e.message || e); results.push({ name: t.name, ok: false, error: String(e && e.message || e) }); console.error(t.name, e); }
+    out.appendChild(div);
+  }
+  const passed = results.filter(r => r.ok).length;
+  const h = document.createElement('p'); h.textContent = `${passed}/${results.length} passed`; h.className = passed === results.length ? 'pass' : 'fail';
+  out.prepend(h);
+  window.__results = results;
+})();
+</script>
+</body>
+</html>

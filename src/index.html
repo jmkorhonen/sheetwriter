@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SheetWriter</title>
+<!-- BUILD -->
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header id="toolbar">
+  <div class="group">
+    <button id="btn-new" title="New workbook">New</button>
+    <button id="btn-open" title="Open an .xlsx workbook (Ctrl+O)">Open</button>
+    <button id="btn-recent" title="Recently opened or saved files">Recent ▾</button>
+    <button id="btn-save" title="Save (Ctrl+S)">Save</button>
+    <button id="btn-saveas" title="Save as… (Ctrl+Shift+S)">Save as</button>
+  </div>
+  <div class="group">
+    <button id="btn-undo" title="Undo (Ctrl+Z)">↶ Undo</button>
+    <button id="btn-redo" title="Redo (Ctrl+Y)">↷ Redo</button>
+  </div>
+  <div class="group views">
+    <button data-view="draft" class="active" title="Cards, one per row">Draft</button>
+    <button data-view="grid" title="All columns as a table">Grid</button>
+    <button data-view="read" title="The text as flowing prose">Read</button>
+  </div>
+  <div class="group">
+    <label class="toggle" title="Show the other columns beside each card"><input type="checkbox" id="chk-side" checked> Side columns</label>
+    <button id="btn-collapse" title="Collapse all headings and indented groups (Draft view)">Collapse all</button>
+    <button id="btn-expand" title="Expand everything (Draft view)">Expand all</button>
+  </div>
+  <div class="group">
+    <button id="btn-export" title="Export a column as Markdown (Ctrl+E)">Export Markdown</button>
+    <button id="btn-settings" title="Title, author, main column, numbering, editor preferences">Settings</button>
+    <button id="btn-help" title="Keyboard shortcuts and conventions (F1)">?</button>
+  </div>
+  <div class="spacer"></div>
+  <div><span id="dirty-dot" title="All changes saved"></span><span id="doc-title">untitled</span></div>
+</header>
+
+<main id="view" class="view-draft"></main>
+<nav id="tabs"></nav>
+<footer id="status"></footer>
+
+<dialog id="dlg-export">
+  <form method="dialog" class="dlg">
+    <h2>Export Markdown</h2>
+    <div class="fields">
+      <label>Column to export <select id="ex-column"></select></label>
+      <label>Scope <select id="ex-scope"><option value="sheet">This chapter</option><option value="all">Whole workbook</option></select></label>
+      <label>Numbering <select id="ex-numbering"><option value="">none</option><option value="headings">headings</option><option value="all">headings and paragraphs</option></select></label>
+      <label>Indented rows as <select id="ex-indented"><option value="paragraphs">paragraphs</option><option value="lists">nested lists</option></select></label>
+      <label>Side column <select id="ex-side"><option value="">none</option></select></label>
+      <label>Side column as <select id="ex-sidemode"><option value="quote">blockquote</option><option value="comment">HTML comment (hidden)</option></select></label>
+      <label class="chk"><input type="checkbox" id="ex-titles"> Sheet names as top headings</label>
+    </div>
+    <textarea id="ex-preview" readonly spellcheck="false"></textarea>
+    <div class="actions">
+      <span id="ex-info" class="muted"></span>
+      <button type="button" id="ex-copy">Copy</button>
+      <button type="button" id="ex-download" class="primary">Download .md</button>
+      <button type="button" data-close>Close</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-settings">
+  <form method="dialog" class="dlg">
+    <h2>Settings</h2>
+    <h3>This workbook</h3>
+    <div class="fields">
+      <label>Title <input type="text" id="st-title"></label>
+      <label>Author <input type="text" id="st-author"></label>
+      <label class="wide">Description <input type="text" id="st-description"></label>
+      <label>Main text column <select id="st-main"></select></label>
+      <label class="chk"><input type="checkbox" id="st-prefix"> Prefix numbering with the chapter number (when more than one chapter)</label>
+      <label class="chk"><input type="checkbox" id="st-track-updated"> Keep an <code>updated</code> column (time of last edit per row)</label>
+      <label class="chk"><input type="checkbox" id="st-track-author"> Keep an <code>author</code> column (last editor per row, from Author above)</label>
+    </div>
+    <p class="muted" style="font-size:12.5px;margin:4px 0 0">Stored in the protected <code>_sheetwriter</code> sheet inside the workbook, with created/modified dates and links to this editor. Extra rows you add to that sheet are kept. <span id="st-extra"></span></p>
+    <h3>Editor (this browser)</h3>
+    <div class="fields">
+      <label>Enter key <select id="st-enter"><option value="row">Enter = new row, Shift+Enter = line break</option><option value="newline">Enter = line break, Shift+Enter = new row</option></select></label>
+      <label>Indent when a row starts with <select id="st-indent"><option value="   ">three spaces</option><option value="  ">two spaces</option><option value="    ">four spaces</option><option value="> ">&gt; and a space</option><option value="">nothing (Tab only)</option></select></label>
+    </div>
+    <h3>About</h3>
+    <div class="about">
+      <span>SheetWriter <span class="app-version"></span></span>
+      <a id="st-site" href="#" target="_blank" rel="noopener">Open online</a>
+      <a id="st-repo" href="#" target="_blank" rel="noopener">Source repository</a>
+      <a id="st-readme" href="#" target="_blank" rel="noopener">Readme</a>
+      <button type="button" class="small" id="st-download">Download latest version</button>
+      <a id="st-download-link" href="#" target="_blank" rel="noopener" style="font-size:12px">(direct link)</a>
+    </div>
+    <div class="actions">
+      <button type="button" data-close>Cancel</button>
+      <button type="button" id="st-save" class="primary">Save settings</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-ask">
+  <form method="dialog" class="dlg">
+    <h2 id="ask-label">Name</h2>
+    <input type="text" id="ask-input" spellcheck="false">
+    <div class="actions">
+      <button type="button" id="ask-cancel">Cancel</button>
+      <button type="button" id="ask-ok" class="primary">OK</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-help">
+  <form method="dialog" class="dlg">
+    <h2>SheetWriter <span class="app-version muted" style="font-size:14px"></span></h2>
+    <p>A text editor whose document is an Excel workbook. One argument per row, extra columns for notes, sources, examples. Each sheet is a chapter. The <code>kind</code> column marks headings and paragraphs, <code>indent</code> nests rows, <code>no</code> holds the numbering, written on save. Cells are Markdown.</p>
+    <h3>Kinds and structure</h3>
+    <table>
+      <tr><td>h1 … h4</td><td>Headings. Numbered 1, 1.1, 1.1.1 … Type <kbd>#</kbd> to <kbd>####</kbd> and a space at the start of a row to set it.</td></tr>
+      <tr><td>p</td><td>Paragraph. Numbered one level below its heading, plus its indent.</td></tr>
+      <tr><td>indent</td><td><kbd>Tab</kbd> / <kbd>Shift+Tab</kbd> (Draft view), <kbd>Ctrl+]</kbd> / <kbd>Ctrl+[</kbd>, or type three spaces at the start of a row (changeable in Settings). An indented row under 2.1 becomes 2.1.1.</td></tr>
+      <tr><td>s</td><td>Sentence that continues the previous paragraph on export (still its own row and number).</td></tr>
+      <tr><td>x</td><td>Excluded from export (a parked argument, a note to self).</td></tr>
+    </table>
+    <h3>Keys in a row (Draft and Grid)</h3>
+    <table>
+      <tr><td>Enter</td><td>New row below (at the end of the text), new row above (at the start), or split the row (in the middle). Shift+Enter is a line break. Swap the two in Settings.</td></tr>
+      <tr><td>Backspace</td><td>On an empty row: delete it. At the start of an indented row: outdent. Empty rows are also removed when you leave them.</td></tr>
+      <tr><td>Ctrl+J</td><td>Merge with the next row</td></tr>
+      <tr><td>Alt+↑ / Alt+↓</td><td>Move the row with its sub-rows past the previous / next sibling (or drag the ⋮⋮ handle; drop on a tab to move to another chapter)</td></tr>
+      <tr><td>Alt+Shift+← / →</td><td>Promote / demote: h1 ← h2 ← h3 ← h4 ← p ← s</td></tr>
+      <tr><td>Ctrl+Enter</td><td>Cycle kind (Shift reverses); or click the kind badge</td></tr>
+      <tr><td>Ctrl+.</td><td>Collapse / expand the rows under a heading, paragraph or indented row</td></tr>
+      <tr><td>Ctrl+D</td><td>Duplicate row</td></tr>
+      <tr><td>Ctrl+Shift+K</td><td>Delete row</td></tr>
+      <tr><td>Ctrl+Shift+M</td><td>Move row (with sub-rows) to another chapter</td></tr>
+      <tr><td>↑ / ↓</td><td>At the first/last line of a cell: move to the previous/next row</td></tr>
+    </table>
+    <h3>Global</h3>
+    <table>
+      <tr><td>Ctrl+S / Ctrl+Shift+S</td><td>Save / Save as</td></tr>
+      <tr><td>Ctrl+O</td><td>Open</td></tr>
+      <tr><td>Ctrl+Z / Ctrl+Y</td><td>Undo / redo</td></tr>
+      <tr><td>Ctrl+E</td><td>Export Markdown</td></tr>
+      <tr><td>Ctrl+PageUp / PageDown</td><td>Previous / next sheet</td></tr>
+    </table>
+    <h3>Grid and tabs</h3>
+    <p>Click a column name to rename it. Double-click a sheet tab to rename it. Drag rows by the ⋮⋮ handle, drag tabs to reorder chapters.</p>
+    <h3>Files</h3>
+    <p>In Edge and Chrome the app opens and saves the .xlsx in place and keeps a Recent list. In Firefox and Safari, Open uses a file picker and Save downloads a copy. Unsaved work is also kept in the browser and offered back on the next start. Sheets without a main text column are data sheets: shown read-only, written back unchanged. A workbook edited or sorted in Excel is put back in <code>no</code> order on load; rows without a number go last. A plain spreadsheet without a <code>text</code> column is imported using its longest text column.</p>
+    <div class="actions"><button type="button" data-close class="primary">Close</button></div>
+  </form>
+</dialog>
+
+<input type="file" id="file-input" accept=".xlsx" hidden>
+
+<script src="timers.js"></script>
+<script src="../vendor/exceljs.min.js"></script>
+<script src="../vendor/marked.min.js"></script>
+<script src="version.js"></script>
+<script src="numbering.js"></script>
+<script src="md.js"></script>
+<script src="model.js"></script>
+<script src="exporter.js"></script>
+<script src="xlsxio.js"></script>
+<script src="views.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
