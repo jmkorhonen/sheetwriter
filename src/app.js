@@ -13,7 +13,7 @@
     doc: Model.ensureIds(Model.newDoc()), si: 0, view: 'draft', showSide: true,
     fileHandle: null, fileName: 'untitled.xlsx', sources: new Map(), dirty: false,
     readScope: 'sheet', readNumbering: '', readColumn: null, readIndented: 'paragraphs',
-    focus: null, lastFocus: null,
+    focus: null, lastFocus: null, readPos: null,
     collapsed: new Set(), editColumn: null, editSheet: null,
     // Display state; saved into the workbook on save and restored on load.
     ui: { side: true, hidden: new Set(), counts: true, toc: 'off', lastToc: 'sheet' },
@@ -74,6 +74,7 @@
     } finally { rendering = false; }
   }
   function currentHeading() {
+    if (state.view === 'read' && state.readPos) return state.readPos;
     const f = state.lastFocus;
     if (!isChapter() || !f || f.i == null || !sheet().rows[f.i]) return null;
     const h = Model.headingFor(sheet().rows, f.i);
@@ -83,24 +84,52 @@
     if (state.ui.toc === 'off') { tocRoot.innerHTML = ''; return; }
     Views.renderToc(tocRoot, { ...ctx(), tocScope: state.ui.toc, current: currentHeading() });
   }
-  /** Jump to a row from the table of contents, in whichever view is active. */
-  function goToRow(si, i) {
+  /** Jump to a row (table of contents, view switches), in whichever view is active. */
+  function goToRow(si, i, opts = {}) {
     const s = state.doc.sheets[si];
     if (!s || s.kind !== 'chapter' || !s.rows[i]) return;
     state.si = si;
     const rows = s.rows;
+    const col = opts.col || state.doc.mainColumn;
     if (state.view === 'draft') rows.forEach((r, j) => { if (j < i && state.collapsed.has(r._id) && Model.sectionEnd(rows, j) > i) state.collapsed.delete(r._id); });
     if (state.view === 'read') {
-      state.lastFocus = { i, col: state.doc.mainColumn, caret: 0 };
+      state.lastFocus = { i, col, caret: 0 };
+      state.readPos = { si, i };
       render();
-      const h = viewRoot.querySelector(`article.read [data-si="${si}"][data-i="${i}"]`);
-      if (h) h.scrollIntoView({ block: 'start' }); else viewRoot.scrollTop = 0;
+      // paragraphs are not tagged in the rendered prose; scroll to the heading that contains the row
+      const h = Model.isHeading(rows[i].kind) ? i : Model.headingFor(rows, i);
+      const el = h != null ? viewRoot.querySelector(`article.read [data-si="${si}"][data-i="${h}"]`) : null;
+      if (el) el.scrollIntoView({ block: opts.block || 'start' }); else viewRoot.scrollTop = 0;
       return;
     }
-    state.focus = { i, col: state.doc.mainColumn, caret: 'end', block: 'start' };
-    state.lastFocus = { i, col: state.doc.mainColumn, caret: 0 };
+    state.focus = { i, col, caret: opts.caret == null ? 'end' : opts.caret, block: opts.block || 'start' };
+    state.lastFocus = { i, col, caret: opts.caret == null ? 0 : opts.caret };
     render();
   }
+  /** Change view and stay at the same place in the text. */
+  function switchView(mode) {
+    if (mode === state.view) return;
+    let si = state.si, i = state.lastFocus ? state.lastFocus.i : null;
+    const col = state.lastFocus ? state.lastFocus.col : null;
+    const caret = state.lastFocus ? state.lastFocus.caret : null;
+    if (state.view === 'read' && state.readPos) { si = state.readPos.si; i = state.readPos.i; }
+    state.view = mode; state.editColumn = null;
+    const s = state.doc.sheets[si];
+    if (i != null && s && s.kind === 'chapter' && s.rows[i]) goToRow(si, i, { block: 'center', col: mode === 'grid' || mode === 'draft' ? col : null, caret });
+    else render();
+  }
+  // Read view scroll spy: remember which heading is being read so other views (and the contents pane) can follow.
+  viewRoot.addEventListener('scroll', () => {
+    if (state.view !== 'read') return;
+    const top = viewRoot.getBoundingClientRect().top + 60;
+    let cur = null;
+    for (const h of viewRoot.querySelectorAll('article.read [data-i]')) { if (h.getBoundingClientRect().top <= top) cur = h; else break; }
+    if (!cur) return;
+    const pos = { si: +cur.dataset.si, i: +cur.dataset.i };
+    if (state.readPos && state.readPos.si === pos.si && state.readPos.i === pos.i) return;
+    state.readPos = pos;
+    if (state.ui.toc !== 'off') Views.updateTocCurrent(tocRoot, pos);
+  }, { passive: true });
   tocRoot.addEventListener('click', e => {
     const item = e.target.closest('.toc-item');
     if (item) { goToRow(+item.dataset.si, +item.dataset.i); return; }
@@ -144,8 +173,10 @@
     if (!t) return;
     const mw = t.closest('.mainwrap');
     if (mw) mw.classList.add('editing');
+    holder.classList.add('focusing'); // side fields of an unfocused card are hidden; show them so a side cell can take focus
     Views.autosize(t);
     t.focus();
+    holder.classList.remove('focusing');
     const pos = f.caret === 'end' || f.caret == null ? t.value.length : Math.min(f.caret, t.value.length);
     try { t.setSelectionRange(pos, pos); } catch (e) { /* ignore */ }
     holder.scrollIntoView({ block: f.block || 'nearest' });
@@ -232,6 +263,7 @@
       }
     }
     mutate(d => Model.setCell(d, state.si, i, col, t.value), { typing: `${state.si}:${i}:${col}`, noRender: true });
+    if (state.lastFocus && state.lastFocus.i === i) state.lastFocus.caret = t.selectionStart;
     Views.autosize(t);
     const mw = t.closest('.mainwrap');
     if (mw) mw.classList.toggle('empty', !t.value);
@@ -482,6 +514,14 @@
       }
     }
   });
+  viewRoot.addEventListener('keyup', e => {
+    const t = e.target;
+    if (t.matches && t.matches('textarea.cell') && state.lastFocus && state.lastFocus.i === rowIndexOf(t)) state.lastFocus.caret = t.selectionStart;
+  });
+  viewRoot.addEventListener('click', e => {
+    const t = e.target;
+    if (t.matches && t.matches('textarea.cell') && state.lastFocus && state.lastFocus.i === rowIndexOf(t)) state.lastFocus.caret = t.selectionStart;
+  });
   // A bare Alt press (as in Alt+arrows) focuses the browser menu in Chromium; keep focus in the editor.
   document.addEventListener('keyup', e => { if (e.key === 'Alt') e.preventDefault(); });
   document.addEventListener('keydown', e => { if (e.key === 'Alt' && !e.ctrlKey) e.preventDefault(); });
@@ -694,7 +734,7 @@
     inp.onkeydown = ev => { if (ev.key === 'Enter') { ev.preventDefault(); finish(true); } if (ev.key === 'Escape') { ev.preventDefault(); finish(false); } };
     inp.onblur = () => finish(true);
   };
-  document.querySelectorAll('#toolbar .views button').forEach(b => b.onclick = () => { state.view = b.dataset.view; state.editColumn = null; render(); });
+  document.querySelectorAll('#toolbar .views button').forEach(b => b.onclick = () => switchView(b.dataset.view));
   document.querySelectorAll('dialog button[data-close]').forEach(b => b.onclick = () => b.closest('dialog').close());
   $('#file-input').onchange = async e => {
     const f = e.target.files[0]; e.target.value = '';
@@ -773,7 +813,7 @@
   function loadDoc(doc, name, handle, sources) {
     state.doc = Model.ensureIds(doc); state.fileName = name; state.fileHandle = handle; state.sources = sources || new Map();
     state.si = doc.sheets.findIndex(s => s.kind === 'chapter'); if (state.si < 0) state.si = 0;
-    state.dirty = false; state.lastFocus = null; state.collapsed.clear(); state.editColumn = null; state.editSheet = null;
+    state.dirty = false; state.lastFocus = null; state.readPos = null; state.collapsed.clear(); state.editColumn = null; state.editSheet = null;
     history.undo.length = 0; history.redo.length = 0; typingKey = null;
     applyViewState(doc.settings.view);
     idb.del('autosave').catch(() => {});
