@@ -54,15 +54,23 @@
       collapsed: state.view === 'draft' ? state.collapsed : NO_COLLAPSE, editColumn: state.editColumn, editSheet: state.editSheet };
   }
   let rendering = false; // focusout events fired by replacing the DOM must not trigger row cleanup
+  let renderedView = null, renderedSi = null;
+  const scroller = () => (state.view === 'grid' ? viewRoot.querySelector('.scroll') : viewRoot);
   function render() {
     rendering = true;
     try {
       clampSi();
+      // Rebuilding the DOM resets the scroll position; keep it when staying in the same view and sheet.
+      const sameplace = renderedView === state.view && renderedSi === state.si;
+      const sc = sameplace ? scroller() : null;
+      const top = sc ? sc.scrollTop : 0;
       Views.renderTabs(tabsRoot, ctx());
       viewRoot.className = 'view-' + state.view;
       if (state.view === 'draft') Views.renderDraft(viewRoot, ctx());
       else if (state.view === 'grid') Views.renderGrid(viewRoot, ctx());
       else Views.renderRead(viewRoot, ctx());
+      if (sc) { const sc2 = scroller(); if (sc2) sc2.scrollTop = top; }
+      renderedView = state.view; renderedSi = state.si;
       document.querySelectorAll('#toolbar .views button').forEach(b => b.classList.toggle('active', b.dataset.view === state.view));
       $('#btn-undo').disabled = !history.undo.length;
       $('#btn-redo').disabled = !history.redo.length;
@@ -883,7 +891,7 @@
       }
       state.dirty = false;
       idb.del('autosave').catch(() => {});
-      render();
+      renderStatus(); // nothing in the view changes on save; a full render would lose the scroll position
     } catch (e) {
       if (e && (e.name === 'AbortError' || e.name === 'NotAllowedError')) { statusEl.textContent = 'Save cancelled: no permission to write the file. ' + statusEl.textContent; return; }
       console.error(e);

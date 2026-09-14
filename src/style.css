@@ -81,7 +81,7 @@ body.toc-open #toc { display: flex; }
 /* ---- draft cards ---- */
 .cards { max-width: 1040px; margin: 0 auto; padding: 0 12px; }
 .cards.has-side { max-width: 1320px; }
-.card { display: grid; grid-template-columns: 122px 1fr; gap: 6px; background: var(--paper); border: 1px solid var(--line); border-radius: 6px; margin-bottom: 3px; padding: 2px 8px 2px 4px; position: relative; align-items: start; }
+.card { scroll-margin-top: 12px; display: grid; grid-template-columns: 122px 1fr; gap: 6px; background: var(--paper); border: 1px solid var(--line); border-radius: 6px; margin-bottom: 3px; padding: 2px 8px 2px 4px; position: relative; align-items: start; }
 .card.with-side { grid-template-columns: 122px 1fr 300px; }
 .card:focus-within { border-color: #b9cdf3; box-shadow: 0 0 0 2px var(--accent-soft); }
 .card.dragging { opacity: .4; }
@@ -141,6 +141,7 @@ table.grid th .col-resize { position: absolute; top: 0; right: -4px; width: 8px;
 table.grid th .col-resize:hover { background: linear-gradient(to right, transparent 3px, var(--accent) 3px, var(--accent) 5px, transparent 5px); }
 body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-select: none; }
 table.grid td { overflow: hidden; }
+table.grid tr[data-i] { scroll-margin-top: 34px; } /* keep a row scrolled to the top clear of the sticky header */
 table.grid th, table.grid td { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); vertical-align: top; padding: 2px 4px; text-align: left; background: var(--paper); }
 table.grid th { background: #f2f1ee; font-weight: 600; white-space: nowrap; position: sticky; top: 0; z-index: 3; border-top: 1px solid var(--line); }
 table.grid th.handle-col, table.grid td.handle-col { width: 22px; min-width: 22px; padding: 2px; text-align: center; color: #c4c1bb; }
@@ -189,7 +190,7 @@ table.grid.readonly td, table.grid.readonly th { max-width: 400px; overflow: hid
 .readbar { max-width: 760px; margin: 0 auto 10px; padding: 0 16px; display: flex; gap: 16px; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
 .readbar label { display: flex; align-items: center; gap: 4px; }
 article.read { max-width: 760px; margin: 0 auto; padding: 32px 40px; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; font-family: var(--serif); font-size: 17px; line-height: 1.65; }
-article.read h1, article.read h2, article.read h3, article.read h4, article.read h5 { font-family: var(--sans); line-height: 1.25; margin: 1.3em 0 .5em; }
+article.read h1, article.read h2, article.read h3, article.read h4, article.read h5 { font-family: var(--sans); line-height: 1.25; margin: 1.3em 0 .5em; scroll-margin-top: 16px; }
 article.read h1 { font-size: 28px; font-weight: 700; border-bottom: 2px solid var(--line); padding-bottom: .2em; }
 article.read h2 { font-size: 22px; font-weight: 700; }
 article.read h3 { font-size: 18px; font-weight: 700; font-style: italic; }
