@@ -309,6 +309,23 @@ test('import: export → import round trip (lists mode, side blockquotes)', () =
   eq(back, [['h1', '', 'Why rows'], ['p', '', 'First argument with **bold**. Second sentence of the same paragraph.'], ['p', '1', 'Ääkköset ja ö toimivat.'], ['p', '2', '=SUM(A1) is text, not a formula']]);
   eq(r.rows[1].side, { sources: 'Smith 2020\nJones 2021' });
 });
+test('model: clone, delete, insert and move row sets', () => {
+  const doc = sampleDoc(); const s = doc.sheets[0];
+  const clip = Model.cloneRows([s.rows[1], s.rows[2]]);
+  ok(!('_id' in clip[0]) && clip[0].text === 'First argument with **bold**.' && clip[0].sources === 'Smith 2020');
+  Model.deleteRows(doc, 0, [1, 2, 3]);
+  eq(s.rows.map(r => r.text), ['Why rows', 'Ääkköset ja ö toimivat.', '=SUM(A1) is text, not a formula']);
+  clip[0].cases = 'new col'; // a column the target sheet lacks
+  const at = Model.insertRows(doc, 1, clip, 1);
+  eq(at, 1); eq(doc.sheets[1].rows.map(r => r.text), ['Skipped level', 'First argument with **bold**.', 'Second sentence of the same paragraph.', 'Under it.']);
+  ok(doc.sheets[1].columns.includes('cases') && doc.sheets[0].columns.includes('cases'), 'missing column added workbook-wide');
+  eq(doc.sheets[1].rows[1].sources, 'Smith 2020'); ok(doc.sheets[1].rows[1]._id !== s.rows[0]._id, 'fresh id');
+  const d2 = sampleDoc(); const r = d2.sheets[0];
+  eq(Model.moveRows(d2, 0, [1, 3], 5), 3);
+  eq(r.rows.map(x => x.kind), ['h1', 's', 'p', 'p', 'x', 'p'], 'rows 1 and 3 moved before original index 5');
+  eq(Model.moveRows(d2, 0, [4, 5], 0), 0);
+  eq(r.rows.map(x => x.kind), ['x', 'p', 'h1', 's', 'p', 'p']);
+});
 test('model: importRows creates side columns, appends or replaces', () => {
   const doc = sampleDoc();
   const imported = [{ kind: 'h2', indent: '', text: 'New', side: {} }, { kind: 'p', indent: '1', text: 'Body', side: { Examples: 'ex', notes: 'n' } }];

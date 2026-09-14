@@ -104,14 +104,15 @@ const Views = (() => {
     const collapsed = collapsible && ctx.collapsed.has(row._id);
     const hidden = collapsed ? Model.sectionEnd(sheet.rows, i) - i - 1 : 0;
     const indent = num.indents[i] || 0;
-    const c = el('div', { class: 'card kind-' + kind + (side.length ? ' with-side' : '') + (collapsed ? ' collapsed' : '') + (indent ? ' indented' : ''), 'data-i': i });
+    const selected = ctx.selected && ctx.selected.has(row._id);
+    const c = el('div', { class: 'card kind-' + kind + (side.length ? ' with-side' : '') + (collapsed ? ' collapsed' : '') + (indent ? ' indented' : '') + (selected ? ' selected' : ''), 'data-i': i });
     const gutter = el('div', { class: 'gutter' },
-      el('span', { class: 'handle', draggable: 'true', title: 'Drag to move with its sub-rows (Alt+↑/↓)' }, '⋮⋮'),
+      el('span', { class: 'handle', draggable: 'true', title: 'Click to select the row (Shift: range, Ctrl: add), drag to move' }, '⋮⋮'),
       collapsible
         ? el('button', { class: 'collapse', type: 'button', title: (collapsed ? 'Expand' : 'Collapse') + ' (Ctrl+.)' }, collapsed ? '▸' : '▾')
         : el('span', { class: 'collapse none' }, ''),
       el('button', { class: 'kindbadge', type: 'button', title: KIND_TITLES[kind] + ' — click or Ctrl+Enter to change, Alt+Shift+←/→ to promote/demote' }, KIND_LABEL[kind]),
-      el('span', { class: 'num' + (num.warnings[i] ? ' warn' : ''), title: num.warnings[i] ? 'Skipped level: numbered at the next allowed level' : 'Number' }, num.numbers[i]));
+      el('span', { class: 'num' + (num.warnings[i] ? ' warn' : ''), title: num.warnings[i] ? 'Skipped level: numbered at the next allowed level' : 'Click to select the row (Shift: range, Ctrl: add)' }, num.numbers[i]));
     const ta = el('textarea', { class: 'cell main', 'data-col': main, rows: '1', spellcheck: 'true', placeholder: placeholderFor(kind) });
     ta.value = text;
     const rendered = el('div', { class: 'rendered', html: MD.render(text) });
@@ -217,10 +218,10 @@ const Views = (() => {
     table.appendChild(thead);
     const tbody = el('tbody', {});
     sheet.rows.forEach((row, i) => {
-      const tr = el('tr', { class: 'kind-' + Model.normKind(row.kind), 'data-i': i });
-      tr.appendChild(el('td', { class: 'handle-col' }, el('span', { class: 'handle', draggable: 'true', title: 'Drag to move (Alt+↑/↓)' }, '⋮⋮')));
+      const tr = el('tr', { class: 'kind-' + Model.normKind(row.kind) + (ctx.selected && ctx.selected.has(row._id) ? ' selected' : ''), 'data-i': i });
+      tr.appendChild(el('td', { class: 'handle-col' }, el('span', { class: 'handle', draggable: 'true', title: 'Click to select the row (Shift: range, Ctrl: add), drag to move' }, '⋮⋮')));
       for (const col of sheet.columns) {
-        if (col === 'no') { tr.appendChild(el('td', { class: 'num' + (num.warnings[i] ? ' warn' : '') }, num.numbers[i])); continue; }
+        if (col === 'no') { tr.appendChild(el('td', { class: 'num' + (num.warnings[i] ? ' warn' : ''), title: 'Click to select the row (Shift: range, Ctrl: add)' }, num.numbers[i])); continue; }
         if (col === 'kind') {
           const sel = el('select', { class: 'kind-select', 'data-col': 'kind', title: KIND_TITLES[Model.normKind(row.kind)] });
           for (const k of Model.KINDS) sel.appendChild(el('option', { value: k, selected: k === Model.normKind(row.kind) }, k));

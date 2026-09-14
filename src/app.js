@@ -15,6 +15,7 @@
     readScope: 'sheet', readNumbering: '', readColumn: null, readIndented: 'paragraphs',
     focus: null, lastFocus: null, readPos: null,
     collapsed: new Set(), editColumn: null, editSheet: null,
+    sel: new Set(), selAnchor: null, clipboard: null, // row selection (ids, current sheet) and the internal row clipboard
     // Display state; saved into the workbook on save and restored on load.
     ui: { side: true, hidden: new Set(), counts: true, toc: 'off', lastToc: 'sheet' },
   };
@@ -51,7 +52,7 @@
   // ---------- render ----------
   function ctx() {
     return { doc: state.doc, si: state.si, showSide: state.ui.side, hiddenColumns: state.ui.hidden, showCounts: state.ui.counts, readScope: state.readScope, readNumbering: state.readNumbering, readColumn: state.readColumn, readIndented: state.readIndented,
-      collapsed: state.view === 'draft' ? state.collapsed : NO_COLLAPSE, editColumn: state.editColumn, editSheet: state.editSheet };
+      collapsed: state.view === 'draft' ? state.collapsed : NO_COLLAPSE, editColumn: state.editColumn, editSheet: state.editSheet, selected: state.sel };
   }
   let rendering = false; // focusout events fired by replacing the DOM must not trigger row cleanup
   let renderedView = null, renderedSi = null;
@@ -62,6 +63,7 @@
       clampSi();
       // Rebuilding the DOM resets the scroll position; keep it when staying in the same view and sheet.
       const sameplace = renderedView === state.view && renderedSi === state.si;
+      if (renderedSi !== null && renderedSi !== state.si) { state.sel.clear(); state.selAnchor = null; } // selection is per sheet
       const sc = sameplace ? scroller() : null;
       const top = sc ? sc.scrollTop : 0;
       Views.renderTabs(tabsRoot, ctx());
@@ -78,9 +80,141 @@
       $('#btn-toc').classList.toggle('active', state.ui.toc !== 'off');
       renderToc();
       renderStatus();
+      renderSelBar();
       applyFocus();
     } finally { rendering = false; }
   }
+
+  // ---------- row selection ----------
+  const selBar = $('#selbar');
+  /** Indexes of selected rows in the current sheet, sorted; a collapsed heading brings its hidden rows. */
+  function selectedIndexes() {
+    if (!isChapter() || !state.sel.size) return [];
+    const rows = sheet().rows;
+    const idx = new Set();
+    rows.forEach((r, i) => {
+      if (!state.sel.has(r._id)) return;
+      const [a, b] = state.view === 'draft' && state.collapsed.has(r._id) ? Model.blockOf(rows, i) : [i, i + 1];
+      for (let k = a; k < b; k++) idx.add(k);
+    });
+    return [...idx].sort((a, b) => a - b);
+  }
+  function applySelection() {
+    viewRoot.querySelectorAll('.card[data-i], tr[data-i]').forEach(h => {
+      const row = sheet().rows[+h.dataset.i];
+      h.classList.toggle('selected', !!row && state.sel.has(row._id));
+    });
+    renderSelBar();
+  }
+  function clearSelection() { state.sel.clear(); state.selAnchor = null; applySelection(); }
+  function selectRow(i, e) {
+    const rows = sheet().rows;
+    if (e.shiftKey && state.selAnchor != null && rows[state.selAnchor]) {
+      const a = Math.min(state.selAnchor, i), b = Math.max(state.selAnchor, i);
+      if (!(e.ctrlKey || e.metaKey)) state.sel.clear();
+      for (let k = a; k <= b; k++) state.sel.add(rows[k]._id);
+    } else if (e.ctrlKey || e.metaKey) {
+      if (state.sel.has(rows[i]._id)) state.sel.delete(rows[i]._id); else state.sel.add(rows[i]._id);
+      state.selAnchor = i;
+    } else {
+      const only = state.sel.size === 1 && state.sel.has(rows[i]._id);
+      state.sel.clear();
+      if (!only) state.sel.add(rows[i]._id);
+      state.selAnchor = i;
+    }
+    const a = document.activeElement;
+    if (a && a.matches && a.matches('textarea, input')) a.blur();
+    applySelection();
+  }
+  function selectAll() { state.sel = new Set(sheet().rows.map(r => r._id)); state.selAnchor = 0; applySelection(); }
+  function renderSelBar() {
+    const n = selectedIndexes().length;
+    const clip = state.clipboard ? state.clipboard.rows.length : 0;
+    if (!n && !clip) { selBar.hidden = true; return; }
+    selBar.hidden = false;
+    $('#sel-info').textContent = n ? `${n} row${n === 1 ? '' : 's'} selected` : `${clip} row${clip === 1 ? '' : 's'} in clipboard`;
+    selBar.querySelectorAll('[data-needs=sel]').forEach(b => b.disabled = !n);
+    selBar.querySelectorAll('[data-needs=clip]').forEach(b => b.disabled = !clip);
+    $('#sel-paste').textContent = n ? 'Paste after selection' : 'Paste after current row';
+  }
+  function copySelection() {
+    const idxs = selectedIndexes(); if (!idxs.length) return;
+    const rows = sheet().rows;
+    state.clipboard = { rows: Model.cloneRows(idxs.map(i => rows[i])), from: sheet().name };
+    const text = idxs.map(i => '  '.repeat(Model.indentOf(rows[i])) + (rows[i][state.doc.mainColumn] || '')).join('\n\n');
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).catch(() => {});
+    renderSelBar();
+  }
+  function deleteSelection() {
+    const idxs = selectedIndexes(); if (!idxs.length) return;
+    const first = idxs[0];
+    state.sel.clear(); state.selAnchor = null;
+    mutate(d => Model.deleteRows(d, state.si, idxs));
+    focusRow(Math.min(first, sheet().rows.length - 1), state.doc.mainColumn, 'end');
+  }
+  function pasteTarget() {
+    const idxs = selectedIndexes();
+    if (idxs.length) return idxs[idxs.length - 1] + 1;
+    if (state.lastFocus && state.lastFocus.i != null) return state.lastFocus.i + 1;
+    return sheet().rows.length;
+  }
+  function pasteRows(rowsToPaste, at) {
+    if (!isChapter() || !rowsToPaste || !rowsToPaste.length) return;
+    if (at == null) at = pasteTarget();
+    let start = 0;
+    mutate(d => { start = Model.insertRows(d, state.si, rowsToPaste, at); });
+    const rows = sheet().rows;
+    state.sel = new Set(rows.slice(start, start + rowsToPaste.length).map(r => r._id)); state.selAnchor = start;
+    state.focus = { i: start, col: state.doc.mainColumn, caret: 0, block: 'center' };
+    render();
+  }
+  function moveSelectionToSheetMenu(anchor) {
+    const idxs = selectedIndexes(); if (!idxs.length) return;
+    const chapters = state.doc.sheets.map((s, k) => ({ s, k })).filter(x => x.s.kind === 'chapter' && x.k !== state.si);
+    if (!chapters.length) { alert('There is no other chapter to move the rows to.'); return; }
+    showMenu(anchor, chapters.map(x => ({
+      label: `Move ${idxs.length} row${idxs.length === 1 ? '' : 's'} to “${x.s.name}”`,
+      action: () => { state.sel.clear(); state.selAnchor = null; mutate(d => Model.moveRowsToSheet(d, state.si, idxs, x.k)); },
+    })));
+  }
+  selBar.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    switch (b.dataset.act) {
+      case 'copy': copySelection(); break;
+      case 'cut': copySelection(); deleteSelection(); break;
+      case 'paste': pasteRows(state.clipboard && state.clipboard.rows); break;
+      case 'dup': { const idxs = selectedIndexes(); pasteRows(Model.cloneRows(idxs.map(i => sheet().rows[i])), idxs[idxs.length - 1] + 1); break; }
+      case 'delete': deleteSelection(); break;
+      case 'move': moveSelectionToSheetMenu(b); break;
+      case 'clear': clearSelection(); break;
+      case 'clearclip': state.clipboard = null; renderSelBar(); break;
+    }
+  });
+  // Click on a number or handle selects; Shift+click must not select text.
+  viewRoot.addEventListener('mousedown', e => {
+    if (e.shiftKey && e.target.closest && e.target.closest('.num, .handle, td.num')) e.preventDefault();
+  });
+  viewRoot.addEventListener('click', e => {
+    const t = e.target.closest && e.target.closest('.card .num, .card .handle, td.num, td.handle-col');
+    if (!t || !isChapter()) return;
+    const i = rowIndexOf(t); if (i == null) return;
+    selectRow(i, e);
+  });
+  // Keys that act on the selection when no text field has focus.
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && state.sel.size) { clearSelection(); return; }
+    const t = e.target;
+    if (t && t.matches && t.matches('textarea, input, select')) return;
+    if (document.querySelector('dialog[open]')) return;
+    if (!isChapter()) return;
+    const k = e.key.toLowerCase();
+    if (state.sel.size && (e.key === 'Delete' || e.key === 'Backspace')) { e.preventDefault(); deleteSelection(); return; }
+    if (state.sel.size && e.ctrlKey && k === 'c') { e.preventDefault(); copySelection(); return; }
+    if (state.sel.size && e.ctrlKey && k === 'x') { e.preventDefault(); copySelection(); deleteSelection(); return; }
+    if (e.ctrlKey && k === 'v' && state.clipboard) { e.preventDefault(); pasteRows(state.clipboard.rows); return; }
+    if (e.ctrlKey && k === 'a') { e.preventDefault(); selectAll(); return; }
+    if (state.sel.size && e.ctrlKey && k === 'd') { e.preventDefault(); const idxs = selectedIndexes(); pasteRows(Model.cloneRows(idxs.map(i => sheet().rows[i])), idxs[idxs.length - 1] + 1); }
+  });
   function currentHeading() {
     if (state.view === 'read' && state.readPos) return state.readPos;
     const f = state.lastFocus;
@@ -501,6 +635,16 @@
       return;
     }
     if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key === '.') { e.preventDefault(); toggleCollapse(i); return; }
+    if (e.ctrlKey && e.shiftKey && !e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      e.preventDefault();
+      if (!state.sel.size) { state.sel.add(row._id); state.selAnchor = i; }
+      const idxs = selectedIndexes();
+      const edge = e.key === 'ArrowUp' ? idxs[0] : idxs[idxs.length - 1];
+      const next = e.key === 'ArrowUp' ? prevVisible(edge) : nextVisibleAfter(Model.blockOf(s.rows, edge)[1]);
+      if (next != null) state.sel.add(s.rows[next]._id);
+      applySelection();
+      return;
+    }
     if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'd') {
       e.preventDefault();
       mutate(d => Model.duplicateRow(d, state.si, i)); focusRow(i + 1, main, 'end');
@@ -547,7 +691,7 @@
   }
 
   // ---------- drag and drop (draft cards and grid rows share the logic; grid headers reorder columns) ----------
-  let dragRow = null, dragTab = null, dragCol = null;
+  let dragRow = null, dragTab = null, dragCol = null, dragSel = false;
   const holderOf = elm => elm.closest && elm.closest('.card, tr[data-i]');
   // Column resizing (Grid): drag the handle at the right edge of a header; double-click resets.
   let resizing = null;
@@ -589,15 +733,18 @@
     const h = e.target.closest && e.target.closest('.handle');
     if (h) {
       dragRow = rowIndexOf(h);
+      const row = sheet().rows[dragRow];
+      dragSel = !!row && state.sel.has(row._id) && selectedIndexes().length > 1;
       e.dataTransfer.setData('text/sw-row', String(dragRow)); e.dataTransfer.effectAllowed = 'move';
-      const holder = holderOf(h); if (holder) holder.classList.add('dragging');
+      if (dragSel) viewRoot.querySelectorAll('.selected').forEach(n => n.classList.add('dragging'));
+      else { const holder = holderOf(h); if (holder) holder.classList.add('dragging'); }
       return;
     }
     const tab = e.target.closest && e.target.closest('.tab[data-i]');
     if (tab) { dragTab = +tab.dataset.i; e.dataTransfer.setData('text/sw-tab', String(dragTab)); e.dataTransfer.effectAllowed = 'move'; }
   });
   document.addEventListener('dragend', () => {
-    dragRow = null; dragTab = null; dragCol = null;
+    dragRow = null; dragTab = null; dragCol = null; dragSel = false;
     document.querySelectorAll('.dragging, .drop-above, .drop-below, .drop-target, .drop-left, .drop-right').forEach(n => n.classList.remove('dragging', 'drop-above', 'drop-below', 'drop-target', 'drop-left', 'drop-right'));
   });
   const colDropTarget = e => {
@@ -641,9 +788,15 @@
     const r = holder.getBoundingClientRect();
     const above = e.clientY < r.top + r.height / 2;
     const ti = +holder.dataset.i;
-    const [start, end] = Model.blockOf(rows, dragRow);
     const [ts, te] = Model.blockOf(rows, ti);
     const to = above ? ts : te;
+    if (dragSel) {
+      const idxs = selectedIndexes(); dragRow = null; dragSel = false;
+      if (idxs.includes(ti)) { render(); return; }
+      mutate(d => Model.moveRows(d, state.si, idxs, to));
+      return;
+    }
+    const [start, end] = Model.blockOf(rows, dragRow);
     dragRow = null;
     if (to >= start && to <= end) { render(); return; }
     const newStart = to > start ? to - (end - start) : to;
@@ -663,8 +816,9 @@
     e.preventDefault();
     if (dragRow != null) {
       const from = dragRow; dragRow = null;
-      const [start, end] = Model.blockOf(sheet().rows, from);
-      const idxs = []; for (let k = start; k < end; k++) idxs.push(k);
+      let idxs;
+      if (dragSel) { idxs = selectedIndexes(); dragSel = false; state.sel.clear(); state.selAnchor = null; }
+      else { const [start, end] = Model.blockOf(sheet().rows, from); idxs = []; for (let k = start; k < end; k++) idxs.push(k); }
       mutate(d => Model.moveRowsToSheet(d, state.si, idxs, ti));
       return;
     }
@@ -856,6 +1010,7 @@
     state.doc = Model.ensureIds(doc); state.fileName = name; state.fileHandle = handle; state.sources = sources || new Map();
     state.si = doc.sheets.findIndex(s => s.kind === 'chapter'); if (state.si < 0) state.si = 0;
     state.dirty = false; state.lastFocus = null; state.readPos = null; state.collapsed.clear(); state.editColumn = null; state.editSheet = null;
+    state.sel.clear(); state.selAnchor = null;
     history.undo.length = 0; history.redo.length = 0; typingKey = null;
     applyViewState(doc.settings.view);
     idb.del('autosave').catch(() => {});

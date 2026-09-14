@@ -509,6 +509,47 @@ const Model = (() => {
     doc.sheets.splice(to, 0, s);
     return to;
   }
+  // ---- multi-row operations (selection clipboard) ----
+  /** Plain copies of rows without private fields, safe to keep in a clipboard. */
+  function cloneRows(rows) {
+    return rows.map(r => { const c = {}; for (const [k, v] of Object.entries(r)) if (!k.startsWith('_')) c[k] = v; return c; });
+  }
+  function deleteRows(doc, si, idxs) {
+    const s = doc.sheets[si];
+    const set = new Set(idxs);
+    s.rows = s.rows.filter((r, i) => !set.has(i));
+    if (!s.rows.length) s.rows.push(emptyRow(s.columns));
+  }
+  /** Insert plain row objects at `at` (default: end); missing columns with data are added workbook-wide. Returns at. */
+  function insertRows(doc, si, plain, at) {
+    const s = doc.sheets[si];
+    if (!s || s.kind !== 'chapter') return null;
+    const needed = new Set();
+    plain.forEach(r => Object.keys(r).forEach(c => { if (!c.startsWith('_') && !RESERVED.includes(c) && !s.columns.includes(c) && String(r[c] || '').trim()) needed.add(c); }));
+    for (const c of needed) addColumn(doc, si, c);
+    const made = plain.map(r => {
+      const row = emptyRow(s.columns, normKind(r.kind), parseInt(r.indent, 10) || 0);
+      for (const c of s.columns) if (!RESERVED.includes(c) && r[c] != null) row[c] = String(r[c]);
+      touch(doc, s, row);
+      return row;
+    });
+    if (s.rows.length === 1 && rowIsEmpty(doc, s, s.rows[0])) { s.rows.length = 0; at = 0; }
+    if (at == null || at > s.rows.length) at = s.rows.length;
+    s.rows.splice(at, 0, ...made);
+    return at;
+  }
+  /** Move the rows at `idxs` (any order, possibly non-contiguous) so they sit, in order, before the row originally at `to`. Returns new start. */
+  function moveRows(doc, si, idxs, to) {
+    const s = doc.sheets[si];
+    const set = new Set(idxs);
+    const moving = [], rest = [];
+    let t = to;
+    s.rows.forEach((r, i) => { if (set.has(i)) { moving.push(r); if (i < to) t--; } else rest.push(r); });
+    t = Math.max(0, Math.min(t, rest.length));
+    rest.splice(t, 0, ...moving);
+    s.rows = rest;
+    return t;
+  }
   /** Insert imported rows ({kind, indent, text, side}) into sheet si at `at` (default: end). Creates side columns as needed.
    *  With replace=true the sheet's rows are replaced. Returns the index of the first inserted row. */
   function importRows(doc, si, imported, { at, replace } = {}) {
@@ -556,6 +597,7 @@ const Model = (() => {
     addRow, deleteRow, moveRow, duplicateRow, splitRow, mergeRow, setCell, setIndent, shiftIndent, cycleKind, shiftKind,
     validColumnName, addColumn, renameColumn, deleteColumn, moveColumn, moveColumnBefore, columnData, syncColumnOrder, setMainColumn, defaultView, columnWidth,
     addSheet, renameSheet, deleteSheet, moveSheet, moveRowsToSheet, uniqueSheetName, importRows,
+    cloneRows, deleteRows, insertRows, moveRows,
   };
 })();
 if (typeof module !== 'undefined') module.exports = Model;

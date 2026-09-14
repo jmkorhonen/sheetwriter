@@ -47,6 +47,17 @@
   <aside id="toc" aria-label="Table of contents"></aside>
   <main id="view" class="view-draft"></main>
 </div>
+<div id="selbar" hidden>
+  <span id="sel-info"></span>
+  <button type="button" data-act="copy" data-needs="sel" title="Copy the selected rows (Ctrl+C)">Copy</button>
+  <button type="button" data-act="cut" data-needs="sel" title="Cut the selected rows (Ctrl+X)">Cut</button>
+  <button type="button" id="sel-paste" data-act="paste" data-needs="clip" title="Paste rows from the clipboard (Ctrl+V)">Paste</button>
+  <button type="button" data-act="dup" data-needs="sel" title="Duplicate the selected rows (Ctrl+D)">Duplicate</button>
+  <button type="button" data-act="move" data-needs="sel" title="Move the selected rows to another sheet">Move to ▾</button>
+  <button type="button" data-act="delete" data-needs="sel" class="danger" title="Delete the selected rows (Delete)">Delete</button>
+  <button type="button" data-act="clear" data-needs="sel" title="Clear the selection (Esc)">✕</button>
+  <button type="button" data-act="clearclip" data-needs="clip" title="Forget the copied rows">Clear clipboard</button>
+</div>
 <nav id="tabs"></nav>
 <footer id="status"></footer>
 
@@ -166,6 +177,15 @@
       <tr><td>Ctrl+Shift+K</td><td>Delete row</td></tr>
       <tr><td>Ctrl+Shift+M</td><td>Move row (with sub-rows) to another chapter</td></tr>
       <tr><td>↑ / ↓</td><td>At the first/last line of a cell: move to the previous/next row</td></tr>
+    </table>
+    <h3>Selecting rows</h3>
+    <table>
+      <tr><td>Click number or ⋮⋮</td><td>Select the row. Shift+click selects a range, Ctrl+click adds or removes a row. A collapsed heading brings its hidden rows.</td></tr>
+      <tr><td>Ctrl+Shift+↑ / ↓</td><td>Extend the selection from the row being edited.</td></tr>
+      <tr><td>Ctrl+A</td><td>Select all rows (when no text field is focused).</td></tr>
+      <tr><td>Ctrl+C / X / V / D, Delete</td><td>Copy, cut, paste, duplicate, delete the selected rows (when no text field is focused; the bar at the bottom has the same buttons). Pasting keeps every column, also into other sheets, and adds missing columns.</td></tr>
+      <tr><td>Esc</td><td>Clear the selection.</td></tr>
+      <tr><td>Drag a selected ⋮⋮</td><td>Move all selected rows, also onto another sheet's tab.</td></tr>
     </table>
     <h3>Global</h3>
     <table>
