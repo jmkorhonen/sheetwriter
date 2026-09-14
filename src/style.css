@@ -28,7 +28,10 @@ a { color: var(--accent); }
 #toolbar .views button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 #toolbar .toggle { display: flex; gap: 4px; align-items: center; font-size: 13px; padding: 0 6px; }
 #toolbar .spacer { flex: 1; }
-#doc-title { font-weight: 600; max-width: 34vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#doc-title { font-weight: 600; max-width: 34vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: text; border-bottom: 1px dashed transparent; }
+#doc-title:hover { border-bottom-color: var(--accent); }
+#title-edit { font: inherit; font-weight: 600; width: 34vw; min-width: 200px; padding: 1px 4px; border: 1px solid var(--accent); border-radius: 4px; }
+.popup .popup-heading { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); padding: 4px 10px 2px; }
 #dirty-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #cfcbc4; margin-right: 8px; vertical-align: middle; transition: background .2s; }
 #dirty-dot.on { background: #e8a317; box-shadow: 0 0 0 3px #fbedcc; }
 
@@ -143,6 +146,10 @@ table.grid th.frozen { z-index: 4; }
 table.grid .frozen-last { box-shadow: 2px 0 0 var(--line); }
 table.grid td.num { font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
 table.grid td.num.warn { color: var(--warn); }
+table.grid th.col-drag { cursor: grab; }
+table.grid th.dragging { opacity: .4; }
+table.grid th.drop-left { box-shadow: inset 3px 0 0 var(--accent); }
+table.grid th.drop-right { box-shadow: inset -3px 0 0 var(--accent); }
 table.grid th .colname.editable { cursor: text; border-bottom: 1px dashed transparent; }
 table.grid th .colname.editable:hover { border-bottom-color: var(--accent); color: var(--accent); }
 table.grid th input.colname-edit { font: inherit; font-weight: 600; width: 140px; padding: 0 3px; border: 1px solid var(--accent); border-radius: 3px; }
@@ -209,6 +216,9 @@ dialog .actions { display: flex; gap: 8px; align-items: center; justify-content:
 dialog .actions .muted { margin-right: auto; font-size: 12px; }
 dialog .actions button, dialog button.small { border: 1px solid var(--line); background: #fafaf8; border-radius: 6px; padding: 5px 12px; cursor: pointer; }
 dialog .actions button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+dialog .actions button:disabled { color: #aaa; background: #f3f2ef; border-color: var(--line); cursor: default; }
+dialog .actions button.primary:disabled { background: #c9d6ef; border-color: #c9d6ef; color: #fff; }
+dialog .about { margin: 0 0 12px; }
 dialog button.small { padding: 2px 9px; font-size: 13px; }
 dialog .about { font-size: 13px; color: var(--muted); display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
 #dlg-import { width: 860px; }

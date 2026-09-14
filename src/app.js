@@ -6,7 +6,7 @@
 
   // Editor preferences live in this browser, not in the workbook.
   const PREF_KEY = 'sheetwriter.prefs';
-  const prefs = Object.assign({ enterMode: 'row', indentTrigger: '   ', showCounts: true, tocOpen: false, tocScope: 'sheet' }, (() => { try { return JSON.parse(localStorage.getItem(PREF_KEY) || '{}'); } catch (e) { return {}; } })());
+  const prefs = Object.assign({ enterMode: 'row', indentTrigger: '   ' }, (() => { try { return JSON.parse(localStorage.getItem(PREF_KEY) || '{}'); } catch (e) { return {}; } })());
   function savePrefs() { try { localStorage.setItem(PREF_KEY, JSON.stringify(prefs)); } catch (e) { /* ignore */ } }
 
   const state = {
@@ -15,6 +15,8 @@
     readScope: 'sheet', readNumbering: '', readColumn: null, readIndented: 'paragraphs',
     focus: null, lastFocus: null,
     collapsed: new Set(), editColumn: null, editSheet: null,
+    // Display state; saved into the workbook on save and restored on load.
+    ui: { side: true, hidden: new Set(), counts: true, toc: 'off', lastToc: 'sheet' },
   };
   const history = { undo: [], redo: [] };
   let typingKey = null, typingAt = 0;
@@ -48,7 +50,7 @@
 
   // ---------- render ----------
   function ctx() {
-    return { doc: state.doc, si: state.si, showSide: state.showSide, showCounts: prefs.showCounts, readScope: state.readScope, readNumbering: state.readNumbering, readColumn: state.readColumn, readIndented: state.readIndented,
+    return { doc: state.doc, si: state.si, showSide: state.ui.side, hiddenColumns: state.ui.hidden, showCounts: state.ui.counts, readScope: state.readScope, readNumbering: state.readNumbering, readColumn: state.readColumn, readIndented: state.readIndented,
       collapsed: state.view === 'draft' ? state.collapsed : NO_COLLAPSE, editColumn: state.editColumn, editSheet: state.editSheet };
   }
   let rendering = false; // focusout events fired by replacing the DOM must not trigger row cleanup
@@ -64,8 +66,8 @@
       document.querySelectorAll('#toolbar .views button').forEach(b => b.classList.toggle('active', b.dataset.view === state.view));
       $('#btn-undo').disabled = !history.undo.length;
       $('#btn-redo').disabled = !history.redo.length;
-      document.body.classList.toggle('toc-open', !!prefs.tocOpen);
-      $('#btn-toc').classList.toggle('active', !!prefs.tocOpen);
+      document.body.classList.toggle('toc-open', state.ui.toc !== 'off');
+      $('#btn-toc').classList.toggle('active', state.ui.toc !== 'off');
       renderToc();
       renderStatus();
       applyFocus();
@@ -78,8 +80,8 @@
     return h == null ? null : { si: state.si, i: h };
   }
   function renderToc() {
-    if (!prefs.tocOpen) { tocRoot.innerHTML = ''; return; }
-    Views.renderToc(tocRoot, { ...ctx(), tocScope: prefs.tocScope, current: currentHeading() });
+    if (state.ui.toc === 'off') { tocRoot.innerHTML = ''; return; }
+    Views.renderToc(tocRoot, { ...ctx(), tocScope: state.ui.toc, current: currentHeading() });
   }
   /** Jump to a row from the table of contents, in whichever view is active. */
   function goToRow(si, i) {
@@ -104,10 +106,10 @@
     if (item) { goToRow(+item.dataset.si, +item.dataset.i); return; }
     const sh = e.target.closest('.toc-sheet');
     if (sh) { state.si = +sh.dataset.si; state.lastFocus = null; render(); return; }
-    if (e.target.closest('#toc-close')) { prefs.tocOpen = false; savePrefs(); render(); }
+    if (e.target.closest('#toc-close')) { state.ui.lastToc = state.ui.toc; state.ui.toc = 'off'; render(); }
   });
   tocRoot.addEventListener('change', e => {
-    if (e.target.id === 'toc-scope') { prefs.tocScope = e.target.value; savePrefs(); renderToc(); }
+    if (e.target.id === 'toc-scope') { state.ui.toc = e.target.value; state.ui.lastToc = e.target.value; renderToc(); }
   });
   const fmt = n => n.toLocaleString('en-US').replace(/,/g, ' ');
   function docTitle() { return state.doc.settings.title || state.fileName.replace(/\.xlsx$/i, ''); }
@@ -161,13 +163,18 @@
   function expandRow(i) { state.collapsed.delete(sheet().rows[i]._id); }
 
   // ---------- generic popup menu (window.prompt is unavailable in some embedded browsers) ----------
+  /** items: array or function returning an array of {label, action, disabled?, title?, checked?, keep?} or '-'.
+   *  keep: the menu stays open and is rebuilt after the action (for toggles). */
   function showMenu(anchor, items) {
     closeMenu();
+    const list = typeof items === 'function' ? items() : items;
     const menu = Views.el('div', { class: 'popup', id: 'popup-menu' });
-    for (const it of items) {
+    for (const it of list) {
       if (it === '-') { menu.appendChild(Views.el('hr', {})); continue; }
-      const b = Views.el('button', { type: 'button', disabled: it.disabled || null, title: it.title || null }, it.label);
-      b.onclick = () => { closeMenu(); it.action(); };
+      if (it.heading) { menu.appendChild(Views.el('div', { class: 'popup-heading' }, it.heading)); continue; }
+      const label = it.checked === undefined ? it.label : (it.checked ? '☑ ' : '☐ ') + it.label;
+      const b = Views.el('button', { type: 'button', disabled: it.disabled || null, title: it.title || null }, label);
+      b.onclick = () => { if (it.keep) { it.action(); showMenu(anchor, items); } else { closeMenu(); it.action(); } };
       menu.appendChild(b);
     }
     document.body.appendChild(menu);
@@ -249,7 +256,7 @@
     const mw = t.closest('.mainwrap');
     if (mw) { mw.classList.add('editing'); Views.autosize(t); }
     renderStatus();
-    if (prefs.tocOpen) Views.updateTocCurrent(tocRoot, currentHeading());
+    if (state.ui.toc !== 'off') Views.updateTocCurrent(tocRoot, currentHeading());
   });
   viewRoot.addEventListener('focusout', e => {
     const t = e.target;
@@ -357,9 +364,12 @@
         if (confirm(`Make "${col}" the main text column for the whole workbook?\nSheets that lack a "${col}" column will have their current main column renamed.`))
           mutate(d => Model.setMainColumn(d, col));
         break;
-      case 'delete':
-        if (confirm(`Delete column "${col}" and its contents from this sheet?`)) mutate(d => Model.deleteColumn(d, state.si, col));
+      case 'delete': {
+        const data = Model.columnData(state.doc, col);
+        const where = data.length ? `\n\nIt holds data in: ${data.map(x => `${x.sheet} (${x.count} row${x.count === 1 ? '' : 's'})`).join(', ')}.\nThat data will be lost (Undo is available).` : '\n\nIt is empty in every sheet.';
+        if (confirm(`Delete column "${col}" from all sheets?${where}`)) mutate(d => Model.deleteColumn(d, state.si, col));
         break;
+      }
       case 'row-add': state.focus = { i: i + 1, col: state.doc.mainColumn }; mutate(d => Model.addRow(d, state.si, i + 1, nextKind(s.rows[i].kind), Model.indentOf(s.rows[i]))); break;
       case 'row-del': mutate(d => Model.deleteRow(d, state.si, i)); break;
     }
@@ -488,10 +498,12 @@
     })));
   }
 
-  // ---------- drag and drop (draft cards and grid rows share the logic) ----------
-  let dragRow = null, dragTab = null;
+  // ---------- drag and drop (draft cards and grid rows share the logic; grid headers reorder columns) ----------
+  let dragRow = null, dragTab = null, dragCol = null;
   const holderOf = elm => elm.closest && elm.closest('.card, tr[data-i]');
   document.addEventListener('dragstart', e => {
+    const th = e.target.closest && e.target.closest('th.col-drag');
+    if (th) { dragCol = th.dataset.col; e.dataTransfer.setData('text/sw-col', dragCol); e.dataTransfer.effectAllowed = 'move'; th.classList.add('dragging'); return; }
     const h = e.target.closest && e.target.closest('.handle');
     if (h) {
       dragRow = rowIndexOf(h);
@@ -503,10 +515,23 @@
     if (tab) { dragTab = +tab.dataset.i; e.dataTransfer.setData('text/sw-tab', String(dragTab)); e.dataTransfer.effectAllowed = 'move'; }
   });
   document.addEventListener('dragend', () => {
-    dragRow = null; dragTab = null;
-    document.querySelectorAll('.dragging, .drop-above, .drop-below, .drop-target').forEach(n => n.classList.remove('dragging', 'drop-above', 'drop-below', 'drop-target'));
+    dragRow = null; dragTab = null; dragCol = null;
+    document.querySelectorAll('.dragging, .drop-above, .drop-below, .drop-target, .drop-left, .drop-right').forEach(n => n.classList.remove('dragging', 'drop-above', 'drop-below', 'drop-target', 'drop-left', 'drop-right'));
   });
+  const colDropTarget = e => {
+    const th = e.target.closest && e.target.closest('table.grid thead th');
+    if (!th || !th.dataset.col || th.classList.contains('reserved') || th.classList.contains('meta')) return null;
+    const r = th.getBoundingClientRect();
+    return { th, before: e.clientX < r.left + r.width / 2 };
+  };
   viewRoot.addEventListener('dragover', e => {
+    if (dragCol != null) {
+      const t = colDropTarget(e); if (!t) return;
+      e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+      viewRoot.querySelectorAll('.drop-left, .drop-right').forEach(n => n.classList.remove('drop-left', 'drop-right'));
+      t.th.classList.add(t.before ? 'drop-left' : 'drop-right');
+      return;
+    }
     if (dragRow == null) return;
     const holder = holderOf(e.target); if (!holder) return;
     e.preventDefault(); e.dataTransfer.dropEffect = 'move';
@@ -516,6 +541,17 @@
     holder.classList.add(above ? 'drop-above' : 'drop-below');
   });
   viewRoot.addEventListener('drop', e => {
+    if (dragCol != null) {
+      const t = colDropTarget(e); const name = dragCol; dragCol = null;
+      if (!t) return;
+      e.preventDefault();
+      const cols = sheet().columns;
+      const target = t.th.dataset.col;
+      let before = t.before ? target : cols[cols.indexOf(target) + 1] || null;
+      if (before === name) return;
+      mutate(d => Model.moveColumnBefore(d, state.si, name, before));
+      return;
+    }
     if (dragRow == null) return;
     const holder = holderOf(e.target); if (!holder) return;
     e.preventDefault();
@@ -628,10 +664,36 @@
   ]);
   $('#btn-settings').onclick = () => openSettings();
   $('#btn-help').onclick = () => $('#dlg-help').showModal();
-  $('#btn-toc').onclick = () => { prefs.tocOpen = !prefs.tocOpen; savePrefs(); render(); };
+  $('#btn-toc').onclick = () => { if (state.ui.toc === 'off') state.ui.toc = state.ui.lastToc || 'sheet'; else { state.ui.lastToc = state.ui.toc; state.ui.toc = 'off'; } render(); };
   $('#btn-collapse').onclick = () => collapseAll(true);
   $('#btn-expand').onclick = () => collapseAll(false);
-  $('#chk-side').onchange = e => { state.showSide = e.target.checked; render(); };
+  $('#btn-columns').onclick = e => showMenu(e.currentTarget, () => {
+    const cols = isChapter() ? Model.sideColumns(state.doc, sheet()) : [];
+    const items = [
+      { heading: 'Draft view shows' },
+      { label: 'Side columns', checked: state.ui.side, keep: true, action: () => { state.ui.side = !state.ui.side; render(); } },
+    ];
+    for (const c of cols) items.push({ label: c, checked: state.ui.side && !state.ui.hidden.has(c), disabled: !state.ui.side, keep: true, action: () => { if (state.ui.hidden.has(c)) state.ui.hidden.delete(c); else state.ui.hidden.add(c); render(); } });
+    if (cols.length > 1) items.push({ label: 'All side columns', keep: true, action: () => { state.ui.hidden.clear(); state.ui.side = true; render(); } });
+    items.push('-', { label: 'Row counts (words, characters, section totals)', checked: state.ui.counts, keep: true, action: () => { state.ui.counts = !state.ui.counts; render(); } });
+    return items;
+  });
+  // Click the title to edit it in place.
+  $('#doc-title').onclick = () => {
+    if ($('#title-edit')) return;
+    const span = $('#doc-title');
+    const inp = Views.el('input', { type: 'text', id: 'title-edit', value: state.doc.settings.title || '', placeholder: 'Title', spellcheck: 'false' });
+    span.replaceWith(inp); inp.focus(); inp.select();
+    let done = false;
+    const finish = commit => {
+      if (done) return; done = true;
+      const v = inp.value.trim();
+      inp.replaceWith(span);
+      if (commit && v !== (state.doc.settings.title || '')) mutate(d => { d.settings.title = v; }); else renderStatus();
+    };
+    inp.onkeydown = ev => { if (ev.key === 'Enter') { ev.preventDefault(); finish(true); } if (ev.key === 'Escape') { ev.preventDefault(); finish(false); } };
+    inp.onblur = () => finish(true);
+  };
   document.querySelectorAll('#toolbar .views button').forEach(b => b.onclick = () => { state.view = b.dataset.view; state.editColumn = null; render(); });
   document.querySelectorAll('dialog button[data-close]').forEach(b => b.onclick = () => b.closest('dialog').close());
   $('#file-input').onchange = async e => {
@@ -640,6 +702,45 @@
     await loadBuffer(await f.arrayBuffer(), f.name, null);
   };
   document.querySelectorAll('.app-version').forEach(n => n.textContent = APP.version);
+  // About block (in the help dialog)
+  $('#ab-repo').href = APP.repo; $('#ab-readme').href = APP.readme; $('#ab-site').href = APP.site; $('#ab-download-link').href = APP.download;
+  $('#ab-download').onclick = async () => {
+    const b = $('#ab-download'); b.disabled = true; b.textContent = 'Downloading…';
+    try {
+      const r = await fetch(APP.download, { cache: 'no-store' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      download(await r.blob(), 'sheetwriter.html');
+      b.textContent = 'Downloaded ✓';
+    } catch (e) {
+      window.open(APP.download, '_blank');
+      b.textContent = 'Opened in a new tab (use Save as…)';
+    }
+    setTimeout(() => { b.disabled = false; b.textContent = 'Download latest version'; }, 3000);
+  };
+
+  // ---------- display state saved with the workbook ----------
+  function currentViewState() {
+    return {
+      mode: state.view, sheet: sheet() ? sheet().name : '', row: state.lastFocus && state.lastFocus.i != null ? state.lastFocus.i : 0,
+      toc: state.ui.toc, side: state.ui.side, hidden: [...state.ui.hidden], counts: state.ui.counts,
+    };
+  }
+  function applyViewState(v) {
+    v = Object.assign(Model.defaultView(), v || {});
+    state.view = ['draft', 'grid', 'read'].includes(v.mode) ? v.mode : 'draft';
+    const si = state.doc.sheets.findIndex(s => s.name === v.sheet);
+    if (si >= 0) state.si = si;
+    state.ui.toc = ['sheet', 'all'].includes(v.toc) ? v.toc : 'off';
+    state.ui.lastToc = state.ui.toc === 'off' ? 'sheet' : state.ui.toc;
+    state.ui.side = v.side !== false;
+    state.ui.hidden = new Set(v.hidden || []);
+    state.ui.counts = v.counts !== false;
+    const s = state.doc.sheets[state.si];
+    if (s && s.kind === 'chapter' && v.row > 0 && v.row < s.rows.length) {
+      state.lastFocus = { i: v.row, col: state.doc.mainColumn, caret: 0 };
+      if (state.view !== 'read') state.focus = { i: v.row, col: state.doc.mainColumn, caret: 'end', block: 'center' };
+    }
+  }
 
   function confirmDiscard() { return !state.dirty || confirm('Discard unsaved changes?'); }
 
@@ -674,6 +775,7 @@
     state.si = doc.sheets.findIndex(s => s.kind === 'chapter'); if (state.si < 0) state.si = 0;
     state.dirty = false; state.lastFocus = null; state.collapsed.clear(); state.editColumn = null; state.editSheet = null;
     history.undo.length = 0; history.redo.length = 0; typingKey = null;
+    applyViewState(doc.settings.view);
     idb.del('autosave').catch(() => {});
     render();
   }
@@ -684,6 +786,7 @@
   }
   async function saveFile(as) {
     let buf;
+    state.doc.settings.view = currentViewState(); // display state travels with the file; not an undo step
     try { buf = await XlsxIO.save(state.doc, state.sources); }
     catch (e) { console.error(e); alert('Could not build the workbook: ' + (e.message || e)); return; }
     const blob = new Blob([buf], { type: XlsxIO.MIME });
@@ -933,7 +1036,6 @@
     $('#st-track-updated').checked = !!d.settings.trackUpdated;
     $('#st-track-author').checked = !!d.settings.trackAuthor;
     $('#st-track-counts').checked = !!d.settings.trackCounts;
-    $('#st-show-counts').checked = !!prefs.showCounts;
     $('#st-enter').value = prefs.enterMode;
     const indSel = $('#st-indent');
     indSel.value = [...indSel.options].some(o => o.value === prefs.indentTrigger) ? prefs.indentTrigger : '   ';
@@ -951,20 +1053,6 @@
     $('#st-extra').textContent = Object.keys(d.settings.extra || {}).length
       ? 'Extra keys kept from the file: ' + Object.keys(d.settings.extra).join(', ')
       : '';
-    $('#st-repo').href = APP.repo; $('#st-readme').href = APP.readme; $('#st-site').href = APP.site; $('#st-download-link').href = APP.download;
-    $('#st-download').onclick = async () => {
-      const b = $('#st-download'); b.disabled = true; b.textContent = 'Downloading…';
-      try {
-        const r = await fetch(APP.download, { cache: 'no-store' });
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        download(await r.blob(), 'sheetwriter.html');
-        b.textContent = 'Downloaded ✓';
-      } catch (e) {
-        window.open(APP.download, '_blank');
-        b.textContent = 'Opened in a new tab (use Save as…)';
-      }
-      setTimeout(() => { b.disabled = false; b.textContent = 'Download latest version'; }, 3000);
-    };
     $('#st-save').onclick = () => {
       const countSel = [...countBox.querySelectorAll('input:checked')].map(n => n.value);
       const vals = { title: $('#st-title').value, author: $('#st-author').value, description: $('#st-description').value,
@@ -972,7 +1060,7 @@
         countColumns: countSel.length === 1 && countSel[0] === sel.value ? [] : countSel,
         trackUpdated: $('#st-track-updated').checked, trackAuthor: $('#st-track-author').checked, trackCounts: $('#st-track-counts').checked };
       const main = sel.value;
-      prefs.enterMode = $('#st-enter').value; prefs.indentTrigger = indSel.value; prefs.showCounts = $('#st-show-counts').checked; savePrefs();
+      prefs.enterMode = $('#st-enter').value; prefs.indentTrigger = indSel.value; savePrefs();
       dlg.close();
       mutate(doc => { Object.assign(doc.settings, vals); if (main && main !== doc.mainColumn) Model.setMainColumn(doc, main); Model.ensureMetaColumns(doc); });
     };
@@ -1030,5 +1118,5 @@
   // ---------- boot ----------
   render();
   offerRestore();
-  window.SheetWriter = { state, render, prefs, Model, XlsxIO, Exporter, Importer, APP, openImport };
+  window.SheetWriter = { state, render, prefs, Model, XlsxIO, Exporter, Importer, APP, openImport, currentViewState, applyViewState, loadDoc };
 })();

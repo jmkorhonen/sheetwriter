@@ -19,6 +19,13 @@ const XlsxIO = (() => {
     track_updated: 'yes/no: keep an "updated" column with the time each row was last edited in SheetWriter',
     track_author: 'yes/no: keep an "author" column with the author who last edited each row in SheetWriter',
     track_counts: 'yes/no: keep "words" and "chars" columns with per-row counts over the counted columns (written on save, recomputed on load)',
+    view_mode: 'Display state when last saved: draft, grid or read',
+    view_sheet: 'Sheet that was open when last saved',
+    view_row: 'Row (1-based, within that sheet) that was being edited when last saved',
+    view_toc: 'Table of contents: off, sheet or all',
+    view_side: 'yes/no: show side columns in Draft view',
+    view_hidden_columns: 'Side columns hidden in Draft view (comma-separated)',
+    view_counts: 'yes/no: show word and character counts under each card in Draft view',
     created: 'First saved (ISO date)',
     modified: 'Last saved by SheetWriter (ISO date)',
     app: 'Editor that wrote this workbook',
@@ -70,6 +77,13 @@ const XlsxIO = (() => {
         case 'track_updated': doc.settings.trackUpdated = yes(value); break;
         case 'track_author': doc.settings.trackAuthor = yes(value); break;
         case 'track_counts': doc.settings.trackCounts = yes(value); break;
+        case 'view_mode': if (['draft', 'grid', 'read'].includes(value.trim())) doc.settings.view.mode = value.trim(); break;
+        case 'view_sheet': doc.settings.view.sheet = value.trim(); break;
+        case 'view_row': { const n = parseInt(value, 10); doc.settings.view.row = n > 0 ? n - 1 : 0; break; }
+        case 'view_toc': doc.settings.view.toc = ['sheet', 'all'].includes(value.trim()) ? value.trim() : 'off'; break;
+        case 'view_side': doc.settings.view.side = yes(value); break;
+        case 'view_hidden_columns': doc.settings.view.hidden = value.split(/[,;]/).map(s => s.trim()).filter(Boolean); break;
+        case 'view_counts': doc.settings.view.counts = yes(value); break;
         case 'created': if (value) doc.settings.created = value; break;
         case 'modified': case 'app': break;
         default:
@@ -88,6 +102,7 @@ const XlsxIO = (() => {
       { header: 'description', key: 'description', width: 70 },
     ];
     const now = new Date().toISOString();
+    const view = Object.assign(Model.defaultView(), doc.settings.view || {});
     const rows = [
       ['title', doc.settings.title || ''],
       ['author', doc.settings.author || ''],
@@ -99,6 +114,13 @@ const XlsxIO = (() => {
       ['track_updated', doc.settings.trackUpdated ? 'yes' : 'no'],
       ['track_author', doc.settings.trackAuthor ? 'yes' : 'no'],
       ['track_counts', doc.settings.trackCounts ? 'yes' : 'no'],
+      ['view_mode', view.mode || 'draft'],
+      ['view_sheet', view.sheet || ''],
+      ['view_row', String((view.row || 0) + 1)],
+      ['view_toc', view.toc || 'off'],
+      ['view_side', view.side === false ? 'no' : 'yes'],
+      ['view_hidden_columns', (view.hidden || []).join(', ')],
+      ['view_counts', view.counts === false ? 'no' : 'yes'],
       ['created', doc.settings.created || now],
       ['modified', now],
       ['app', `${APP.name} ${APP.version}`],

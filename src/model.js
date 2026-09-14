@@ -142,6 +142,10 @@ const Model = (() => {
     return null;
   }
 
+  /** Display state saved with the workbook: which view, sheet and row were open, what the Draft view shows. */
+  function defaultView() {
+    return { mode: 'draft', sheet: '', row: 0, toc: 'off', side: true, hidden: [], counts: true };
+  }
   function newChapter(name, columns = DEFAULT_COLUMNS) {
     const cols = ensureReserved(columns.slice());
     return { name, kind: 'chapter', columns: cols, rows: [emptyRow(cols)] };
@@ -156,7 +160,7 @@ const Model = (() => {
     return {
       version: 1,
       mainColumn: 'text',
-      settings: { numbering: 'continuous', title: '', author: '', description: '', created: new Date().toISOString(), trackUpdated: false, trackAuthor: false, trackCounts: true, freezeColumns: 1, countColumns: [], extra: {} },
+      settings: { numbering: 'continuous', title: '', author: '', description: '', created: new Date().toISOString(), trackUpdated: false, trackAuthor: false, trackCounts: true, freezeColumns: 1, countColumns: [], view: defaultView(), extra: {} },
       sheets: [newChapter('Chapter 1')],
     };
   }
@@ -384,20 +388,37 @@ const Model = (() => {
     if (!allowExisting && sheet.columns.some(c => c.toLowerCase() === name.toLowerCase())) return { ok: false, reason: `Column "${name}" already exists.` };
     return { ok: true, name };
   }
-  function addColumn(doc, si, name, at) { addColumnTo(doc.sheets[si], name, at); }
+  // Column operations are workbook-wide: sheet si is the reference whose order the other chapter sheets follow.
+  function syncColumnOrder(doc, ref) {
+    for (const s of doc.sheets) {
+      if (s.kind !== 'chapter' || s === ref) continue;
+      const shared = ref.columns.filter(c => s.columns.includes(c));
+      const rest = s.columns.filter(c => !ref.columns.includes(c));
+      s.columns = shared.concat(rest);
+    }
+  }
+  function addColumn(doc, si, name, at) {
+    const ref = doc.sheets[si];
+    addColumnTo(ref, name, at);
+    for (const s of chapterSheets(doc)) if (s !== ref) addColumnTo(s, name);
+    syncColumnOrder(doc, ref);
+  }
   function renameColumn(doc, si, oldName, newName) {
-    const s = doc.sheets[si];
-    const k = s.columns.indexOf(oldName);
-    if (k < 0 || oldName === newName) return;
-    s.columns[k] = newName;
-    s.rows.forEach(r => { r[newName] = r[oldName] || ''; delete r[oldName]; });
+    if (oldName === newName) return;
+    for (const s of chapterSheets(doc)) {
+      const k = s.columns.indexOf(oldName);
+      if (k < 0) continue;
+      s.columns[k] = newName;
+      s.rows.forEach(r => { r[newName] = r[oldName] || ''; delete r[oldName]; });
+    }
     if (oldName === doc.mainColumn) setMainColumn(doc, newName, oldName);
   }
   function deleteColumn(doc, si, name) {
-    const s = doc.sheets[si];
     if (RESERVED.includes(name) || name === doc.mainColumn) return;
-    s.columns = s.columns.filter(c => c !== name);
-    s.rows.forEach(r => { delete r[name]; });
+    for (const s of chapterSheets(doc)) {
+      s.columns = s.columns.filter(c => c !== name);
+      s.rows.forEach(r => { delete r[name]; });
+    }
   }
   function moveColumn(doc, si, name, dir) {
     const s = doc.sheets[si];
@@ -405,6 +426,25 @@ const Model = (() => {
     const j = k + dir;
     if (k < 0 || j < 0 || j >= s.columns.length) return;
     [s.columns[k], s.columns[j]] = [s.columns[j], s.columns[k]];
+    syncColumnOrder(doc, s);
+  }
+  /** Move column `name` before column `before` (null = to the end). */
+  function moveColumnBefore(doc, si, name, before) {
+    const s = doc.sheets[si];
+    if (!s.columns.includes(name) || name === before) return;
+    s.columns = s.columns.filter(c => c !== name);
+    const k = before ? s.columns.indexOf(before) : -1;
+    if (k < 0) s.columns.push(name); else s.columns.splice(k, 0, name);
+    syncColumnOrder(doc, s);
+  }
+  /** Where a column holds data: [{sheet, count}] over all chapter sheets. */
+  function columnData(doc, name) {
+    const out = [];
+    for (const s of chapterSheets(doc)) {
+      const n = s.rows.filter(r => String(r[name] || '').trim()).length;
+      if (n) out.push({ sheet: s.name, count: n });
+    }
+    return out;
   }
   /** Change the main column name across all chapter sheets. */
   function setMainColumn(doc, newName, oldName = doc.mainColumn) {
@@ -464,7 +504,7 @@ const Model = (() => {
     if (!s || s.kind !== 'chapter') return null;
     const cols = new Set();
     imported.forEach(r => Object.keys(r.side || {}).forEach(c => cols.add(c)));
-    for (const c of cols) if (!s.columns.some(x => x.toLowerCase() === c.toLowerCase())) addColumnTo(s, c);
+    for (const c of cols) if (!s.columns.some(x => x.toLowerCase() === c.toLowerCase())) addColumn(doc, si, c);
     const colFor = c => s.columns.find(x => x.toLowerCase() === c.toLowerCase());
     const rows = imported.map(r => {
       const row = emptyRow(s.columns, normKind(r.kind), isHeading(r.kind) ? 0 : (parseInt(r.indent, 10) || 0));
@@ -487,7 +527,7 @@ const Model = (() => {
     const moved = idxs.map(i => src.rows[i]);
     for (let k = idxs.length - 1; k >= 0; k--) src.rows.splice(idxs[k], 1);
     if (!src.rows.length) src.rows.push(emptyRow(src.columns));
-    for (const r of moved) for (const c of Object.keys(r)) if (!c.startsWith('_') && !dst.columns.includes(c) && r[c]) addColumnTo(dst, c);
+    for (const r of moved) for (const c of Object.keys(r)) if (!c.startsWith('_') && !dst.columns.includes(c) && r[c]) addColumn(doc, ti, c);
     for (const r of moved) for (const c of dst.columns) if (r[c] == null) r[c] = '';
     if (at == null) at = dst.rows.length;
     if (dst.rows.length === 1 && rowIsEmpty(doc, dst, dst.rows[0])) { dst.rows.length = 0; at = 0; }
@@ -502,7 +542,7 @@ const Model = (() => {
     chapterSheets, chapterIndex, numbering, countColumns, rowCounts, sectionCounts, userColumns, sideColumns, rowIsEmpty, tocEntries, headingFor,
     wordCount, charCount, sheetCounts, docCounts, sheetWords, docWords, safeFileName,
     addRow, deleteRow, moveRow, duplicateRow, splitRow, mergeRow, setCell, setIndent, shiftIndent, cycleKind, shiftKind,
-    validColumnName, addColumn, renameColumn, deleteColumn, moveColumn, setMainColumn,
+    validColumnName, addColumn, renameColumn, deleteColumn, moveColumn, moveColumnBefore, columnData, syncColumnOrder, setMainColumn, defaultView,
     addSheet, renameSheet, deleteSheet, moveSheet, moveRowsToSheet, uniqueSheetName, importRows,
   };
 })();

@@ -30,7 +30,7 @@
     <button data-view="read" title="The text as flowing prose">Read</button>
   </div>
   <div class="group">
-    <label class="toggle" title="Show the other columns beside each card"><input type="checkbox" id="chk-side" checked> Side columns</label>
+    <button id="btn-columns" title="Which side columns and counts the Draft view shows">Columns ▾</button>
     <button id="btn-collapse" title="Collapse all headings and indented groups (Draft view)">Collapse all</button>
     <button id="btn-expand" title="Expand everything (Draft view)">Expand all</button>
   </div>
@@ -113,18 +113,9 @@
     <h3>Editor (this browser)</h3>
     <div class="fields">
       <label>Enter key <select id="st-enter"><option value="row">Enter = new row, Shift+Enter = line break</option><option value="newline">Enter = line break, Shift+Enter = new row</option></select></label>
-      <label class="chk"><input type="checkbox" id="st-show-counts"> <span>Show counts under each card in Draft view: the row's words and characters, and for headings, paragraph groups and indented groups the total of everything under them</span></label>
       <label>Indent when a row starts with <select id="st-indent"><option value="   ">three spaces</option><option value="  ">two spaces</option><option value="    ">four spaces</option><option value="> ">&gt; and a space</option><option value="">nothing (Tab only)</option></select></label>
     </div>
-    <h3>About</h3>
-    <div class="about">
-      <span>SheetWriter <span class="app-version"></span></span>
-      <a id="st-site" href="#" target="_blank" rel="noopener">Open online</a>
-      <a id="st-repo" href="#" target="_blank" rel="noopener">Source repository</a>
-      <a id="st-readme" href="#" target="_blank" rel="noopener">Readme</a>
-      <button type="button" class="small" id="st-download">Download latest version</button>
-      <a id="st-download-link" href="#" target="_blank" rel="noopener" style="font-size:12px">(direct link)</a>
-    </div>
+    <p class="muted" style="font-size:12.5px;margin:4px 0 0">The display state (view, sheet, row, table of contents, visible columns, counts) is saved with the workbook too, from the Columns ▾ and Contents buttons.</p>
     <div class="actions">
       <button type="button" data-close>Cancel</button>
       <button type="button" id="st-save" class="primary">Save settings</button>
@@ -146,6 +137,13 @@
 <dialog id="dlg-help">
   <form method="dialog" class="dlg">
     <h2>SheetWriter <span class="app-version muted" style="font-size:14px"></span></h2>
+    <div class="about">
+      <a id="ab-site" href="#" target="_blank" rel="noopener">Open online</a>
+      <a id="ab-repo" href="#" target="_blank" rel="noopener">Source repository</a>
+      <a id="ab-readme" href="#" target="_blank" rel="noopener">Readme</a>
+      <button type="button" class="small" id="ab-download">Download latest version</button>
+      <a id="ab-download-link" href="#" target="_blank" rel="noopener" style="font-size:12px">(direct link)</a>
+    </div>
     <p>A text editor whose document is an Excel workbook. One argument per row, extra columns for notes, sources, examples. Each sheet is a chapter. The <code>kind</code> column marks headings and paragraphs, <code>indent</code> nests rows, <code>no</code> holds the numbering, written on save. Cells are Markdown.</p>
     <h3>Kinds and structure</h3>
     <table>
@@ -181,8 +179,8 @@
     <p>Markdown ▾ → Import, or drop a .md file on the window. One paragraph per row by default; files written one sentence per line are detected and imported line by line; a sentence mode splits paragraphs into p and s rows. Lists become indented rows, and the side-column blockquotes and comments that Export writes are read back into their columns, so export and import round-trip. Import into a new sheet, one sheet per h1, or the current sheet. Several files at once become several sheets.</p>
     <h3>Table of contents</h3>
     <p>The Contents button opens a pane listing the headings of this sheet or of all sheets, with numbers and section word counts. Click a heading to jump to it in Draft, Grid or Read view; collapsed sections open on the way. The heading you are working under is highlighted.</p>
-    <h3>Grid and tabs</h3>
-    <p>Click a column name to rename it. Double-click a sheet tab to rename it. Drag rows by the ⋮⋮ handle, drag tabs to reorder chapters.</p>
+    <h3>Grid, columns and tabs</h3>
+    <p>Columns are shared by all chapter sheets: adding, renaming, deleting or reordering a column applies everywhere, and deleting warns if any sheet holds data in it. Click a column name to rename it, drag a column header to reorder. The Columns ▾ button chooses which side columns and counts the Draft view shows. Double-click a sheet tab to rename it. Drag rows by the ⋮⋮ handle, drag tabs to reorder chapters. Click the title in the toolbar to change it.</p>
     <h3>Files</h3>
     <p>In Edge and Chrome the app opens and saves the .xlsx in place and keeps a Recent list. In Firefox and Safari, Open uses a file picker and Save downloads a copy. Unsaved work is also kept in the browser and offered back on the next start. Sheets without a main text column are data sheets: shown read-only, written back unchanged. A workbook edited or sorted in Excel is put back in <code>no</code> order on load; rows without a number go last. A plain spreadsheet without a <code>text</code> column is imported using its longest text column.</p>
     <div class="actions"><button type="button" data-close class="primary">Close</button></div>

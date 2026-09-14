@@ -87,7 +87,8 @@ const Views = (() => {
     if (!sheet) return;
     if (sheet.kind !== 'chapter') { root.appendChild(dataSheetTable(sheet, ctx)); return; }
     const num = Model.numbering(doc, si);
-    const side = ctx.showSide ? Model.sideColumns(doc, sheet) : [];
+    const hidden = ctx.hiddenColumns || new Set();
+    const side = ctx.showSide ? Model.sideColumns(doc, sheet).filter(c => !hidden.has(c)) : [];
     const list = el('div', { class: 'cards' + (side.length ? ' has-side' : '') });
     const sections = Model.sectionCounts(doc, sheet);
     for (const i of visibleIndexes(sheet, ctx.collapsed)) list.appendChild(card(ctx, sheet, sheet.rows[i], i, num, side, sections));
@@ -184,12 +185,13 @@ const Views = (() => {
     hr.appendChild(el('th', { class: 'handle-col' }, ''));
     for (const col of sheet.columns) {
       const isMain = col === doc.mainColumn, isRes = RESERVED.includes(col), isMeta = Model.isMeta(doc, col) || Model.isComputed(doc, col);
-      const th = el('th', { class: (isMain ? 'main' : '') + (isRes ? ' reserved' : '') + (col === 'no' ? ' num' : '') + (isMeta ? ' meta' : ''), 'data-col': col });
+      const draggable = !isRes && !isMeta;
+      const th = el('th', { class: (isMain ? 'main' : '') + (isRes ? ' reserved' : '') + (col === 'no' ? ' num' : '') + (isMeta ? ' meta' : '') + (draggable ? ' col-drag' : ''), 'data-col': col, draggable: draggable ? 'true' : null });
       if (!isRes && !isMeta && ctx.editColumn === col) {
         th.appendChild(el('input', { type: 'text', class: 'colname-edit', 'data-col': col, value: col, spellcheck: 'false' }));
       } else {
         const titles = { no: 'Computed numbering, written to the file on save', kind: 'Row kind', indent: 'Indent level (Tab / Shift+Tab)', updated: 'Last edited (maintained by SheetWriter)', author: 'Last editor (maintained by SheetWriter)', words: 'Words in the counted columns (computed, written on save)', chars: 'Characters in the counted columns (computed, written on save)' };
-        th.appendChild(el('span', { class: 'colname' + (isRes || isMeta ? '' : ' editable'), 'data-col': col, title: (isRes || isMeta) ? titles[col] : 'Click to rename' }, col, isMain ? ' ★' : ''));
+        th.appendChild(el('span', { class: 'colname' + (isRes || isMeta ? '' : ' editable'), 'data-col': col, title: (isRes || isMeta) ? titles[col] : 'Click to rename, drag the header to reorder (all sheets)' }, col, isMain ? ' ★' : ''));
       }
       if (!isRes && !isMeta) {
         const ops = el('span', { class: 'colops' });
