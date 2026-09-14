@@ -136,7 +136,11 @@ textarea.cell.main { font-family: var(--serif); font-size: 16px; }
 
 /* ---- grid ---- */
 .scroll { overflow-x: auto; padding: 0 12px; }
-table.grid { border-collapse: separate; border-spacing: 0; background: var(--paper); min-width: 100%; font-size: 13.5px; }
+table.grid { border-collapse: separate; border-spacing: 0; background: var(--paper); table-layout: fixed; font-size: 13.5px; }
+table.grid th .col-resize { position: absolute; top: 0; right: -4px; width: 8px; height: 100%; cursor: col-resize; z-index: 5; }
+table.grid th .col-resize:hover { background: linear-gradient(to right, transparent 3px, var(--accent) 3px, var(--accent) 5px, transparent 5px); }
+body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-select: none; }
+table.grid td { overflow: hidden; }
 table.grid th, table.grid td { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); vertical-align: top; padding: 2px 4px; text-align: left; background: var(--paper); }
 table.grid th { background: #f2f1ee; font-weight: 600; white-space: nowrap; position: sticky; top: 0; z-index: 3; border-top: 1px solid var(--line); }
 table.grid th.handle-col, table.grid td.handle-col { width: 22px; min-width: 22px; padding: 2px; text-align: center; color: #c4c1bb; }
@@ -168,7 +172,7 @@ table.grid td.kind { width: 52px; }
 select.kind-select { font: inherit; font-size: 12px; width: 48px; padding: 0; }
 table.grid td.indent { font-family: var(--mono); font-size: 12px; color: var(--muted); text-align: center; width: 44px; }
 table.grid td.meta, table.grid th.meta { font-size: 11px; color: #a09d97; white-space: nowrap; }
-table.grid td.main { min-width: 360px; width: 45%; }
+table.grid td.main { min-width: 0; }
 table.grid td textarea.cell { padding: 2px 4px; font-size: 13.5px; }
 table.grid td.main textarea.cell { font-family: var(--serif); font-size: 14.5px; }
 table.grid tr.kind-h1 td.main textarea, table.grid tr.kind-h2 td.main textarea { font-family: var(--sans); font-weight: 700; }

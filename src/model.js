@@ -142,6 +142,18 @@ const Model = (() => {
     return null;
   }
 
+  /** Grid column width in pixels: the user's setting, else a default by column type. */
+  function columnWidth(doc, col) {
+    const w = doc.settings.widths && doc.settings.widths[col];
+    if (w > 0) return w;
+    if (col === 'no') return 64;
+    if (col === 'kind') return 56;
+    if (col === 'indent') return 48;
+    if (col === doc.mainColumn) return 480;
+    if (isComputed(doc, col)) return 60;
+    if (isMeta(doc, col)) return 130;
+    return 200;
+  }
   /** Display state saved with the workbook: which view, sheet and row were open, what the Draft view shows. */
   function defaultView() {
     return { mode: 'draft', sheet: '', row: 0, toc: 'off', side: true, hidden: [], counts: true };
@@ -160,7 +172,7 @@ const Model = (() => {
     return {
       version: 1,
       mainColumn: 'text',
-      settings: { numbering: 'continuous', title: '', author: '', description: '', created: new Date().toISOString(), trackUpdated: false, trackAuthor: false, trackCounts: true, freezeColumns: 1, countColumns: [], view: defaultView(), extra: {} },
+      settings: { numbering: 'continuous', title: '', author: '', description: '', created: new Date().toISOString(), trackUpdated: false, trackAuthor: false, trackCounts: true, freezeColumns: 1, countColumns: [], widths: {}, view: defaultView(), extra: {} },
       sheets: [newChapter('Chapter 1')],
     };
   }
@@ -542,7 +554,7 @@ const Model = (() => {
     chapterSheets, chapterIndex, numbering, countColumns, rowCounts, sectionCounts, userColumns, sideColumns, rowIsEmpty, tocEntries, headingFor,
     wordCount, charCount, sheetCounts, docCounts, sheetWords, docWords, safeFileName,
     addRow, deleteRow, moveRow, duplicateRow, splitRow, mergeRow, setCell, setIndent, shiftIndent, cycleKind, shiftKind,
-    validColumnName, addColumn, renameColumn, deleteColumn, moveColumn, moveColumnBefore, columnData, syncColumnOrder, setMainColumn, defaultView,
+    validColumnName, addColumn, renameColumn, deleteColumn, moveColumn, moveColumnBefore, columnData, syncColumnOrder, setMainColumn, defaultView, columnWidth,
     addSheet, renameSheet, deleteSheet, moveSheet, moveRowsToSheet, uniqueSheetName, importRows,
   };
 })();

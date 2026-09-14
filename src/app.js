@@ -541,7 +541,41 @@
   // ---------- drag and drop (draft cards and grid rows share the logic; grid headers reorder columns) ----------
   let dragRow = null, dragTab = null, dragCol = null;
   const holderOf = elm => elm.closest && elm.closest('.card, tr[data-i]');
+  // Column resizing (Grid): drag the handle at the right edge of a header; double-click resets.
+  let resizing = null;
+  viewRoot.addEventListener('mousedown', e => {
+    const h = e.target.closest && e.target.closest('.col-resize');
+    if (!h) return;
+    e.preventDefault();
+    const col = h.dataset.col;
+    const colEl = viewRoot.querySelector(`table.grid col[data-col="${CSS.escape(col)}"]`);
+    resizing = { col, colEl, startX: e.clientX, startW: Model.columnWidth(state.doc, col), table: h.closest('table') };
+    document.body.classList.add('col-resizing');
+  });
+  document.addEventListener('mousemove', e => {
+    if (!resizing) return;
+    const w = Math.max(40, Math.round(resizing.startW + e.clientX - resizing.startX));
+    resizing.w = w;
+    resizing.colEl.style.width = w + 'px';
+    resizing.table.style.width = ([...resizing.table.querySelectorAll('col')].reduce((n, c) => n + parseFloat(c.style.width), 0)) + 'px';
+  });
+  document.addEventListener('mouseup', () => {
+    if (!resizing) return;
+    const { col, w } = resizing; resizing = null;
+    document.body.classList.remove('col-resizing');
+    if (w) { state.doc.settings.widths = state.doc.settings.widths || {}; state.doc.settings.widths[col] = w; markDirty(); }
+    Views.autosizeAll(viewRoot);
+    Views.applyFreeze(viewRoot.querySelector('table.grid'), state.doc.settings.freezeColumns);
+    renderStatus();
+  });
+  viewRoot.addEventListener('dblclick', e => {
+    const h = e.target.closest && e.target.closest('.col-resize');
+    if (!h) return;
+    e.preventDefault();
+    if (state.doc.settings.widths && state.doc.settings.widths[h.dataset.col]) { delete state.doc.settings.widths[h.dataset.col]; markDirty(); render(); }
+  });
   document.addEventListener('dragstart', e => {
+    if (resizing || (e.target.closest && e.target.closest('.col-resize'))) { e.preventDefault(); return; }
     const th = e.target.closest && e.target.closest('th.col-drag');
     if (th) { dragCol = th.dataset.col; e.dataTransfer.setData('text/sw-col', dragCol); e.dataTransfer.effectAllowed = 'move'; th.classList.add('dragging'); return; }
     const h = e.target.closest && e.target.closest('.handle');

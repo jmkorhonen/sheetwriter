@@ -180,6 +180,14 @@ const Views = (() => {
     if (sheet.kind !== 'chapter') { root.appendChild(dataSheetTable(sheet, ctx)); return; }
     const num = Model.numbering(doc, si);
     const table = el('table', { class: 'grid' });
+    // Fixed layout with explicit widths so columns can be resized; the table is as wide as its columns.
+    const cg = el('colgroup', {});
+    cg.appendChild(el('col', { style: 'width:22px' }));
+    let total = 22;
+    for (const col of sheet.columns) { const w = Model.columnWidth(doc, col); total += w; cg.appendChild(el('col', { 'data-col': col, style: `width:${w}px` })); }
+    cg.appendChild(el('col', { style: 'width:96px' })); total += 96;
+    table.appendChild(cg);
+    table.style.width = total + 'px';
     const thead = el('thead', {});
     const hr = el('tr', {});
     hr.appendChild(el('th', { class: 'handle-col' }, ''));
@@ -201,6 +209,7 @@ const Views = (() => {
         if (!isMain) ops.appendChild(el('button', { type: 'button', class: 'danger', 'data-action': 'delete', 'data-col': col, title: 'Delete column' }, '✕'));
         th.appendChild(ops);
       }
+      th.appendChild(el('span', { class: 'col-resize', 'data-col': col, title: 'Drag to resize, double-click to reset' }));
       hr.appendChild(th);
     }
     hr.appendChild(el('th', { class: 'addcol' }, el('button', { type: 'button', class: 'addcol-btn', 'data-action': 'add', title: 'Add a column' }, '+ column')));
