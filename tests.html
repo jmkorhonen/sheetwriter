@@ -353,7 +353,7 @@ test('xlsx: sortByNo restores order, rows without a number go last', () => {
 });
 test('xlsx: save then load preserves rows, columns, settings, order; meta columns last', async () => {
   const doc = sampleDoc(); doc.settings.trackUpdated = true; Model.ensureMetaColumns(doc);
-  doc.settings.view = { mode: 'grid', sheet: 'Body', row: 1, toc: 'all', side: false, hidden: ['notes'], counts: false };
+  doc.settings.view = { mode: 'grid', sheet: 'Body', row: 1, toc: 'all', side: false, hidden: ['notes'], counts: false, gridHidden: ['sources', 'indent'] };
   doc.settings.widths = { text: 700, notes: 140 };
   Model.moveColumn(doc, 0, 'updated', -1); // put it before "sources" in the model; the file must still end with it
   doc.sheets[0].rows[4].indent = '1';
@@ -369,7 +369,7 @@ test('xlsx: save then load preserves rows, columns, settings, order; meta column
   eq(d2.mainColumn, 'text'); eq(d2.settings.title, 'Test workbook: draft/1'); eq(d2.settings.author, 'Tester');
   eq(d2.settings.numbering, 'continuous'); eq(d2.settings.trackUpdated, true); eq(d2.settings.trackAuthor, false);
   eq(d2.settings.freezeColumns, 1); eq(d2.settings.countColumns, []);
-  eq(d2.settings.view, { mode: 'grid', sheet: 'Body', row: 1, toc: 'all', side: false, hidden: ['notes'], counts: false }, 'display state round-trips');
+  eq(d2.settings.view, { mode: 'grid', sheet: 'Body', row: 1, toc: 'all', side: false, hidden: ['notes'], counts: false, gridHidden: ['sources', 'indent'] }, 'display state round-trips');
   eq(d2.settings.widths, { text: 700, notes: 140 }, 'column widths round-trip');
   eq(Model.columnWidth(d2, 'text'), 700); eq(Model.columnWidth(d2, 'sources'), 200, 'default width');
   eq(d2.settings.extra, { custom_key: ['custom value', 'kept by the app'] });

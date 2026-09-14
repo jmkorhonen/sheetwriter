@@ -180,19 +180,27 @@ const Views = (() => {
     if (!sheet) return;
     if (sheet.kind !== 'chapter') { root.appendChild(dataSheetTable(sheet, ctx)); return; }
     const num = Model.numbering(doc, si);
+    const gridHidden = ctx.gridHidden || new Set();
+    const columns = sheet.columns.filter(c => c === 'no' || c === doc.mainColumn || !gridHidden.has(c));
+    const hiddenCount = sheet.columns.length - columns.length;
+    // Filter box above the table
+    const bar = el('div', { class: 'gridbar' },
+      el('input', { type: 'search', id: 'grid-filter', placeholder: 'Filter rows (any visible column)…', value: ctx.gridFilter || '', spellcheck: 'false' }),
+      el('span', { id: 'grid-filter-info', class: 'muted' }, ''));
+    root.appendChild(bar);
     const table = el('table', { class: 'grid' });
     // Fixed layout with explicit widths so columns can be resized; the table is as wide as its columns.
     const cg = el('colgroup', {});
     cg.appendChild(el('col', { style: 'width:22px' }));
     let total = 22;
-    for (const col of sheet.columns) { const w = Model.columnWidth(doc, col); total += w; cg.appendChild(el('col', { 'data-col': col, style: `width:${w}px` })); }
-    cg.appendChild(el('col', { style: 'width:96px' })); total += 96;
+    for (const col of columns) { const w = Model.columnWidth(doc, col); total += w; cg.appendChild(el('col', { 'data-col': col, style: `width:${w}px` })); }
+    cg.appendChild(el('col', { style: 'width:110px' })); total += 110;
     table.appendChild(cg);
     table.style.width = total + 'px';
     const thead = el('thead', {});
     const hr = el('tr', {});
     hr.appendChild(el('th', { class: 'handle-col' }, ''));
-    for (const col of sheet.columns) {
+    for (const col of columns) {
       const isMain = col === doc.mainColumn, isRes = RESERVED.includes(col), isMeta = Model.isMeta(doc, col) || Model.isComputed(doc, col);
       const draggable = !isRes && !isMeta;
       const th = el('th', { class: (isMain ? 'main' : '') + (isRes ? ' reserved' : '') + (col === 'no' ? ' num' : '') + (isMeta ? ' meta' : '') + (draggable ? ' col-drag' : ''), 'data-col': col, draggable: draggable ? 'true' : null });
@@ -207,21 +215,37 @@ const Views = (() => {
         ops.appendChild(el('button', { type: 'button', 'data-action': 'left', 'data-col': col, title: 'Move left' }, '◀'));
         ops.appendChild(el('button', { type: 'button', 'data-action': 'right', 'data-col': col, title: 'Move right' }, '▶'));
         if (!isMain) ops.appendChild(el('button', { type: 'button', 'data-action': 'main', 'data-col': col, title: 'Make this the main text column' }, '★'));
+        if (!isMain) ops.appendChild(el('button', { type: 'button', 'data-action': 'hide', 'data-col': col, title: 'Hide this column in Grid view (Columns ▾ shows it again)' }, '–'));
         if (!isMain) ops.appendChild(el('button', { type: 'button', class: 'danger', 'data-action': 'delete', 'data-col': col, title: 'Delete column' }, '✕'));
         th.appendChild(ops);
+      } else if (col !== 'no') {
+        th.appendChild(el('span', { class: 'colops' }, el('button', { type: 'button', 'data-action': 'hide', 'data-col': col, title: 'Hide this column in Grid view (Columns ▾ shows it again)' }, '–')));
       }
       th.appendChild(el('span', { class: 'col-resize', 'data-col': col, title: 'Drag to resize, double-click to reset' }));
       hr.appendChild(th);
     }
-    hr.appendChild(el('th', { class: 'addcol' }, el('button', { type: 'button', class: 'addcol-btn', 'data-action': 'add', title: 'Add a column' }, '+ column')));
+    const addTh = el('th', { class: 'addcol' }, el('button', { type: 'button', class: 'addcol-btn', 'data-action': 'add', title: 'Add a column' }, '+ column'));
+    if (hiddenCount) addTh.appendChild(el('button', { type: 'button', class: 'hidden-pill', 'data-action': 'showhidden', title: 'Hidden: ' + sheet.columns.filter(c => !columns.includes(c)).join(', ') + '. Click to choose.' }, `${hiddenCount} hidden ▾`));
+    hr.appendChild(addTh);
     thead.appendChild(hr);
     table.appendChild(thead);
     const tbody = el('tbody', {});
-    sheet.rows.forEach((row, i) => {
-      const tr = el('tr', { class: 'kind-' + Model.normKind(row.kind) + (ctx.selected && ctx.selected.has(row._id) ? ' selected' : ''), 'data-i': i });
+    for (const i of visibleIndexes(sheet, ctx.collapsed)) {
+      const row = sheet.rows[i];
+      const collapsible = Model.isCollapsible(sheet.rows, i);
+      const collapsed = collapsible && ctx.collapsed && ctx.collapsed.has(row._id);
+      const tr = el('tr', { class: 'kind-' + Model.normKind(row.kind) + (ctx.selected && ctx.selected.has(row._id) ? ' selected' : '') + (collapsed ? ' collapsed' : ''), 'data-i': i });
       tr.appendChild(el('td', { class: 'handle-col' }, el('span', { class: 'handle', draggable: 'true', title: 'Click to select the row (Shift: range, Ctrl: add), drag to move' }, '⋮⋮')));
-      for (const col of sheet.columns) {
-        if (col === 'no') { tr.appendChild(el('td', { class: 'num' + (num.warnings[i] ? ' warn' : ''), title: 'Click to select the row (Shift: range, Ctrl: add)' }, num.numbers[i])); continue; }
+      for (const col of columns) {
+        if (col === 'no') {
+          const td = el('td', { class: 'num' + (num.warnings[i] ? ' warn' : ''), title: 'Click to select the row (Shift: range, Ctrl: add)' });
+          td.appendChild(collapsible
+            ? el('button', { class: 'collapse', type: 'button', title: (collapsed ? 'Expand' : 'Collapse') + ' (Ctrl+.)' }, collapsed ? '▸' : '▾')
+            : el('span', { class: 'collapse none' }, ''));
+          td.appendChild(el('span', {}, num.numbers[i]));
+          if (collapsed) td.appendChild(el('span', { class: 'hidden-rows', title: 'Rows hidden under this one' }, ` +${Model.sectionEnd(sheet.rows, i) - i - 1}`));
+          tr.appendChild(td); continue;
+        }
         if (col === 'kind') {
           const sel = el('select', { class: 'kind-select', 'data-col': 'kind', title: KIND_TITLES[Model.normKind(row.kind)] });
           for (const k of Model.KINDS) sel.appendChild(el('option', { value: k, selected: k === Model.normKind(row.kind) }, k));
@@ -241,13 +265,35 @@ const Views = (() => {
         el('button', { type: 'button', class: 'row-add', 'data-action': 'row-add', title: 'Insert a row below' }, '+ row'),
         el('button', { type: 'button', class: 'danger', 'data-action': 'row-del', title: 'Delete this row' }, '✕')));
       tbody.appendChild(tr);
-    });
+    }
     table.appendChild(tbody);
     root.appendChild(el('div', { class: 'scroll' }, table));
     autosizeAll(root);
     applyFreeze(table, doc.settings.freezeColumns);
+    applyGridFilter(root, ctx);
     const edit = root.querySelector('input.colname-edit');
     if (edit) { edit.focus(); edit.select(); }
+  }
+
+  /** Hide grid rows whose visible columns do not contain the filter text (case-insensitive). */
+  function applyGridFilter(root, ctx) {
+    const q = String(ctx.gridFilter || '').trim().toLowerCase();
+    const sheet = ctx.doc.sheets[ctx.si];
+    const table = root.querySelector('table.grid');
+    if (!table || !sheet) return;
+    const num = q ? Model.numbering(ctx.doc, ctx.si).numbers : null;
+    const gridHidden = ctx.gridHidden || new Set();
+    const cols = sheet.columns.filter(c => c !== 'no' && !gridHidden.has(c));
+    let shown = 0, all = 0;
+    table.querySelectorAll('tbody tr[data-i]').forEach(tr => {
+      all++;
+      const i = +tr.dataset.i, row = sheet.rows[i];
+      const hit = !q || num[i].startsWith(q) || cols.some(c => String(row[c] || '').toLowerCase().includes(q));
+      tr.classList.toggle('filtered', !hit);
+      if (hit) shown++;
+    });
+    const info = root.querySelector('#grid-filter-info');
+    if (info) info.textContent = q ? `${shown} of ${all} rows` : '';
   }
 
   /** Freeze the handle column plus the first n sheet columns (sticky left offsets measured from the header). */
@@ -367,5 +413,5 @@ const Views = (() => {
     if (edit) { edit.focus(); edit.select(); }
   }
 
-  return { el, autosize, autosizeAll, visibleIndexes, renderDraft, refreshCard, refreshMeta, renderGrid, applyFreeze, renderRead, renderToc, updateTocCurrent, renderTabs };
+  return { el, autosize, autosizeAll, visibleIndexes, renderDraft, refreshCard, refreshMeta, renderGrid, applyFreeze, applyGridFilter, renderRead, renderToc, updateTocCurrent, renderTabs };
 })();

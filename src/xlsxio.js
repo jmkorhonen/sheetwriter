@@ -27,6 +27,7 @@ const XlsxIO = (() => {
     view_side: 'yes/no: show side columns in Draft view',
     view_hidden_columns: 'Side columns hidden in Draft view (comma-separated)',
     view_counts: 'yes/no: show word and character counts under each card in Draft view',
+    view_grid_hidden_columns: 'Columns hidden in Grid view (comma-separated)',
     created: 'First saved (ISO date)',
     modified: 'Last saved by SheetWriter (ISO date)',
     app: 'Editor that wrote this workbook',
@@ -90,6 +91,7 @@ const XlsxIO = (() => {
         case 'view_side': doc.settings.view.side = yes(value); break;
         case 'view_hidden_columns': doc.settings.view.hidden = value.split(/[,;]/).map(s => s.trim()).filter(Boolean); break;
         case 'view_counts': doc.settings.view.counts = yes(value); break;
+        case 'view_grid_hidden_columns': doc.settings.view.gridHidden = value.split(/[,;]/).map(s => s.trim()).filter(Boolean); break;
         case 'created': if (value) doc.settings.created = value; break;
         case 'modified': case 'app': break;
         default:
@@ -128,6 +130,7 @@ const XlsxIO = (() => {
       ['view_side', view.side === false ? 'no' : 'yes'],
       ['view_hidden_columns', (view.hidden || []).join(', ')],
       ['view_counts', view.counts === false ? 'no' : 'yes'],
+      ['view_grid_hidden_columns', (view.gridHidden || []).join(', ')],
       ['created', doc.settings.created || now],
       ['modified', now],
       ['app', `${APP.name} ${APP.version}`],

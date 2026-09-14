@@ -17,7 +17,8 @@
     collapsed: new Set(), editColumn: null, editSheet: null,
     sel: new Set(), selAnchor: null, clipboard: null, // row selection (ids, current sheet) and the internal row clipboard
     // Display state; saved into the workbook on save and restored on load.
-    ui: { side: true, hidden: new Set(), counts: true, toc: 'off', lastToc: 'sheet' },
+    ui: { side: true, hidden: new Set(), counts: true, toc: 'off', lastToc: 'sheet', gridHidden: new Set() },
+    gridFilter: '',
   };
   const history = { undo: [], redo: [] };
   let typingKey = null, typingAt = 0;
@@ -52,7 +53,8 @@
   // ---------- render ----------
   function ctx() {
     return { doc: state.doc, si: state.si, showSide: state.ui.side, hiddenColumns: state.ui.hidden, showCounts: state.ui.counts, readScope: state.readScope, readNumbering: state.readNumbering, readColumn: state.readColumn, readIndented: state.readIndented,
-      collapsed: state.view === 'draft' ? state.collapsed : NO_COLLAPSE, editColumn: state.editColumn, editSheet: state.editSheet, selected: state.sel };
+      collapsed: state.view === 'read' ? NO_COLLAPSE : state.collapsed, editColumn: state.editColumn, editSheet: state.editSheet, selected: state.sel,
+      gridHidden: state.ui.gridHidden, gridFilter: state.gridFilter };
   }
   let rendering = false; // focusout events fired by replacing the DOM must not trigger row cleanup
   let renderedView = null, renderedSi = null;
@@ -94,7 +96,7 @@
     const idx = new Set();
     rows.forEach((r, i) => {
       if (!state.sel.has(r._id)) return;
-      const [a, b] = state.view === 'draft' && state.collapsed.has(r._id) ? Model.blockOf(rows, i) : [i, i + 1];
+      const [a, b] = state.view !== 'read' && state.collapsed.has(r._id) ? Model.blockOf(rows, i) : [i, i + 1];
       for (let k = a; k < b; k++) idx.add(k);
     });
     return [...idx].sort((a, b) => a - b);
@@ -195,6 +197,7 @@
     if (e.shiftKey && e.target.closest && e.target.closest('.num, .handle, td.num')) e.preventDefault();
   });
   viewRoot.addEventListener('click', e => {
+    if (e.target.closest && e.target.closest('button')) return; // collapse toggle inside the number cell
     const t = e.target.closest && e.target.closest('.card .num, .card .handle, td.num, td.handle-col');
     if (!t || !isChapter()) return;
     const i = rowIndexOf(t); if (i == null) return;
@@ -233,7 +236,7 @@
     state.si = si;
     const rows = s.rows;
     const col = opts.col || state.doc.mainColumn;
-    if (state.view === 'draft') rows.forEach((r, j) => { if (j < i && state.collapsed.has(r._id) && Model.sectionEnd(rows, j) > i) state.collapsed.delete(r._id); });
+    if (state.view !== 'read') rows.forEach((r, j) => { if (j < i && state.collapsed.has(r._id) && Model.sectionEnd(rows, j) > i) state.collapsed.delete(r._id); });
     if (state.view === 'read') {
       state.lastFocus = { i, col, caret: 0 };
       state.readPos = { si, i };
@@ -330,7 +333,7 @@
   const isChapter = () => sheet() && sheet().kind === 'chapter';
   function nextKind(kind) { return Model.isHeading(kind) || kind === 'x' ? 'p' : kind; }
   function rowIndexOf(elm) { const h = elm && elm.closest('[data-i]'); return h ? +h.dataset.i : null; }
-  function visible() { return state.view === 'draft' ? Views.visibleIndexes(sheet(), state.collapsed) : sheet().rows.map((_, i) => i); }
+  function visible() { return state.view !== 'read' ? Views.visibleIndexes(sheet(), state.collapsed) : sheet().rows.map((_, i) => i); }
   function prevVisible(i) { const v = visible(); const k = v.indexOf(i); return k > 0 ? v[k - 1] : null; }
   function nextVisibleAfter(end) { const v = visible(); return v.find(x => x >= end) ?? null; }
   function expandRow(i) { state.collapsed.delete(sheet().rows[i]._id); }
@@ -517,7 +520,7 @@
     const rows = sheet().rows;
     if (!on) state.collapsed.clear();
     else rows.forEach((r, i) => { if (Model.isCollapsible(rows, i)) state.collapsed.add(r._id); });
-    if (state.view === 'draft') render();
+    if (state.view !== 'read') render();
   }
 
   function gridAction(action, btn) {
@@ -532,6 +535,8 @@
         mutate(d => Model.addColumn(d, state.si, name));
         break;
       }
+      case 'hide': state.ui.gridHidden.add(col); render(); break;
+      case 'showhidden': columnsMenu(btn); break;
       case 'left': mutate(d => Model.moveColumn(d, state.si, col, -1)); break;
       case 'right': mutate(d => Model.moveColumn(d, state.si, col, 1)); break;
       case 'main':
@@ -903,16 +908,31 @@
   $('#btn-toc').onclick = () => { if (state.ui.toc === 'off') state.ui.toc = state.ui.lastToc || 'sheet'; else { state.ui.lastToc = state.ui.toc; state.ui.toc = 'off'; } render(); };
   $('#btn-collapse').onclick = () => collapseAll(true);
   $('#btn-expand').onclick = () => collapseAll(false);
-  $('#btn-columns').onclick = e => showMenu(e.currentTarget, () => {
-    const cols = isChapter() ? Model.sideColumns(state.doc, sheet()) : [];
-    const items = [
-      { heading: 'Draft view shows' },
-      { label: 'Side columns', checked: state.ui.side, keep: true, action: () => { state.ui.side = !state.ui.side; render(); } },
-    ];
-    for (const c of cols) items.push({ label: c, checked: state.ui.side && !state.ui.hidden.has(c), disabled: !state.ui.side, keep: true, action: () => { if (state.ui.hidden.has(c)) state.ui.hidden.delete(c); else state.ui.hidden.add(c); render(); } });
-    if (cols.length > 1) items.push({ label: 'All side columns', keep: true, action: () => { state.ui.hidden.clear(); state.ui.side = true; render(); } });
-    items.push('-', { label: 'Row counts (words, characters, section totals)', checked: state.ui.counts, keep: true, action: () => { state.ui.counts = !state.ui.counts; render(); } });
-    return items;
+  function columnsMenu(anchor) {
+    showMenu(anchor, () => {
+      const cols = isChapter() ? Model.sideColumns(state.doc, sheet()) : [];
+      const items = [
+        { heading: 'Draft view shows' },
+        { label: 'Side columns', checked: state.ui.side, keep: true, action: () => { state.ui.side = !state.ui.side; render(); } },
+      ];
+      for (const c of cols) items.push({ label: c, checked: state.ui.side && !state.ui.hidden.has(c), disabled: !state.ui.side, keep: true, action: () => { if (state.ui.hidden.has(c)) state.ui.hidden.delete(c); else state.ui.hidden.add(c); render(); } });
+      if (cols.length > 1) items.push({ label: 'All side columns', keep: true, action: () => { state.ui.hidden.clear(); state.ui.side = true; render(); } });
+      items.push({ label: 'Row counts (words, characters, section totals)', checked: state.ui.counts, keep: true, action: () => { state.ui.counts = !state.ui.counts; render(); } });
+      if (isChapter()) {
+        items.push('-', { heading: 'Grid view shows' });
+        const gcols = sheet().columns.filter(c => c !== 'no' && c !== state.doc.mainColumn);
+        for (const c of gcols) items.push({ label: c, checked: !state.ui.gridHidden.has(c), keep: true, action: () => { if (state.ui.gridHidden.has(c)) state.ui.gridHidden.delete(c); else state.ui.gridHidden.add(c); render(); } });
+        if (state.ui.gridHidden.size) items.push({ label: 'All columns', keep: true, action: () => { state.ui.gridHidden.clear(); render(); } });
+      }
+      return items;
+    });
+  }
+  $('#btn-columns').onclick = e => columnsMenu(e.currentTarget);
+  // Grid row filter: applied live, no re-render, so the box keeps focus.
+  viewRoot.addEventListener('input', e => {
+    if (e.target.id !== 'grid-filter') return;
+    state.gridFilter = e.target.value;
+    Views.applyGridFilter(viewRoot, ctx());
   });
   // Click the title to edit it in place.
   $('#doc-title').onclick = () => {
@@ -958,7 +978,7 @@
   function currentViewState() {
     return {
       mode: state.view, sheet: sheet() ? sheet().name : '', row: state.lastFocus && state.lastFocus.i != null ? state.lastFocus.i : 0,
-      toc: state.ui.toc, side: state.ui.side, hidden: [...state.ui.hidden], counts: state.ui.counts,
+      toc: state.ui.toc, side: state.ui.side, hidden: [...state.ui.hidden], counts: state.ui.counts, gridHidden: [...state.ui.gridHidden],
     };
   }
   function applyViewState(v) {
@@ -970,7 +990,9 @@
     state.ui.lastToc = state.ui.toc === 'off' ? 'sheet' : state.ui.toc;
     state.ui.side = v.side !== false;
     state.ui.hidden = new Set(v.hidden || []);
+    state.ui.gridHidden = new Set(v.gridHidden || []);
     state.ui.counts = v.counts !== false;
+    state.gridFilter = '';
     const s = state.doc.sheets[state.si];
     if (s && s.kind === 'chapter' && v.row > 0 && v.row < s.rows.length) {
       state.lastFocus = { i: v.row, col: state.doc.mainColumn, caret: 0 };

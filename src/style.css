@@ -162,6 +162,15 @@ table.grid td.frozen { background: #fbfaf8; }
 table.grid th.frozen { z-index: 4; }
 table.grid .frozen-last { box-shadow: 2px 0 0 var(--line); }
 table.grid td.num { font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
+table.grid td.num .collapse { width: 12px; margin-right: 2px; font-size: 11px; }
+table.grid td.num .hidden-rows { color: #a09d97; font-size: 10.5px; }
+table.grid tr.collapsed td { border-bottom: 2px solid #cfcbc4; }
+table.grid tr.filtered { display: none; }
+.gridbar { display: flex; align-items: center; gap: 10px; padding: 4px 12px; background: var(--paper); border-bottom: 1px solid var(--line); font-size: 12.5px; }
+#grid-filter { font: inherit; font-size: 12.5px; padding: 3px 8px; border: 1px solid var(--line); border-radius: 6px; width: 320px; }
+#grid-filter:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+table.grid button.hidden-pill { border: 1px solid var(--line); background: #f5f4f1; border-radius: 10px; font-size: 11px; color: var(--muted); padding: 0 8px; margin-left: 6px; cursor: pointer; }
+table.grid button.hidden-pill:hover { background: var(--accent-soft); color: var(--accent); }
 table.grid td.num.warn { color: var(--warn); }
 table.grid th.col-drag { cursor: grab; }
 table.grid th.dragging { opacity: .4; }
