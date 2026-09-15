@@ -176,7 +176,7 @@ const Model = (() => {
   }
   /** Display state saved with the workbook: which view, sheet and row were open, what the Draft view shows. */
   function defaultView() {
-    return { mode: 'draft', sheet: '', row: 0, toc: 'off', side: true, hidden: [], counts: true, gridHidden: [] };
+    return { mode: 'draft', sheet: '', row: 0, toc: 'off', side: true, hidden: [], counts: true, gridHidden: ['.words', '.chars', '.updated', '.author'] };
   }
   function newChapter(name, columns = DEFAULT_COLUMNS) {
     const cols = ensureReserved(columns.slice());
@@ -192,7 +192,7 @@ const Model = (() => {
     return {
       version: 1,
       mainColumn: 'text',
-      settings: { numbering: 'continuous', title: '', author: '', description: '', created: new Date().toISOString(), trackUpdated: false, trackAuthor: false, trackCounts: true, freezeColumns: 1, countColumns: [], widths: {}, wordTarget: 0, roles: { status: '', target: '' }, protectHeaders: true, view: defaultView(), extra: {} },
+      settings: { numbering: 'continuous', title: '', author: '', description: '', created: new Date().toISOString(), trackUpdated: false, trackAuthor: false, trackCounts: true, freezeColumns: 1, countColumns: [], widths: {}, wordTarget: 0, roles: { status: '', target: '' }, protectHeaders: true, contentsSheet: true, view: defaultView(), extra: {} },
       sheets: [newChapter('Chapter 1')],
     };
   }

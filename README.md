@@ -32,6 +32,7 @@ Files written before 0.10 used bare names (`kind`, `no`, …); they load as befo
 - A plain spreadsheet without a `text` column is imported using its longest text column; `.no`, `.kind` and `.indent` are added.
 - Rows added in Excel without a number go to the end of the chapter, as paragraphs.
 - The `.sheetwriter` sheet (named `_sheetwriter` in files from before 0.10.1, which still load) holds title, author, column roles, numbering and tracking settings, dates, and links to the editor, followed by instructions for editing the workbook in Excel: what is safe, what is lost on the next save, what breaks the structure. It is protected against accidental edits (Review → Unprotect Sheet in Excel to change it there). Rows you add to it are kept.
+- A `.contents` sheet, rewritten on every save, lists every heading with its number, section word count and a link to its row, for navigating the workbook in Excel. SheetWriter ignores it on load. A setting switches it off.
 - Chapter sheets are protected too, but only their header row: every cell, row and column stays editable, sortable and filterable in Excel, while renaming or deleting a column needs Unprotect Sheet. A setting switches this off.
 
 ### Editing in Excel
@@ -71,14 +72,14 @@ Press `?` in the toolbar or F1 for the full list.
 - **Columns ▾** chooses which side columns and counts the Draft view shows. This display state, with the current view, sheet, row and table of contents, is saved in the workbook and restored when the file is opened again. Click the title in the toolbar to change it.
 - **Read**: the text as flowing prose, with numbering none / headings / all and indented rows as paragraphs or nested lists.
 - **Contents**: a pane listing the headings of this sheet or of all sheets, with numbers and section word counts. Click to jump; the heading you are working under is highlighted.
-- **Import Markdown** (Markdown ▾ → Import, or drop a `.md` file on the window): headings become h1–h4 rows, paragraphs become rows (or sentences, or lines for files written one sentence per line, which are detected), list items become indented rows, and the side-column blockquotes and comments that Export writes are read back into their columns. Into a new sheet, one sheet per h1, or the current sheet, with a preview first.
+- **Import** (toolbar button, or drop a `.md` file on the window): headings become h1–h4 rows, paragraphs become rows (or sentences, or lines for files written one sentence per line, which are detected), list items become indented rows, and the side-column blockquotes and comments that Export writes are read back into their columns. Into a new sheet, one sheet per h1, or the current sheet, with a preview first.
 - **Find and replace** (Ctrl+F, Ctrl+H): across all sheets and columns or narrowed down, with match case; F3 steps through matches, Replace all is one undo step.
-- **Export Word** (Ctrl+E → Download .docx): real heading styles, bold, italic, code and links from the Markdown, indented rows, side columns as small notes. Written by a small built-in OOXML writer, no Word needed.
+- **Export Word** (Export button or Ctrl+E, then "Download Word"): real heading styles, bold, italic, code and links from the Markdown, indented rows, side columns as small notes. Written by a small built-in OOXML writer, no Word needed.
 - **Safety**: saving warns if the file changed on disk since it was opened; a snapshot is kept in the browser every 5 minutes (Recent ▾ → Recover an autosave…); and Settings can write an autosave copy to a second workbook such as `name_AUTOSAVE.xlsx` at an interval (Edge and Chrome).
 - **Status and targets**: the column given the status role shows coloured chips on cards and tints Grid cells; the target column's number on a heading row sets a word target for that section, and Settings holds one for the workbook. The Filter button hides rows by text or `column:value` in Draft and Grid.
 - **Formatting keys**: Ctrl+B, Ctrl+I and Ctrl+K wrap the selection in Markdown bold, italic or a link. Pasting rich text from Word or a browser into the import dialog converts it to Markdown.
 - **Appearance**: light, dark or follow the system, in Settings. Read view has a print stylesheet.
-- **Export Markdown** (Ctrl+E): any column as one document, whole workbook or one chapter, with the same options plus a side column as blockquotes or hidden comments.
+- **Export Markdown** (Export button or Ctrl+E): any column as one document, whole workbook or one chapter, with the same options plus a side column as blockquotes or hidden comments.
 
 ## Develop
 

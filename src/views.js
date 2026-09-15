@@ -230,7 +230,7 @@ const Views = (() => {
     const gridHidden = ctx.gridHidden || new Set();
     const columns = sheet.columns.filter(c => c === '.no' || c === doc.mainColumn || !gridHidden.has(c));
     const hiddenCount = sheet.columns.length - columns.length;
-    root.appendChild(filterBar(ctx));
+    if (ctx.rowFilter || ctx.showFilter) root.appendChild(filterBar(ctx));
     const statusCol = Model.statusColumn(doc, sheet), targetCol = Model.targetColumn(doc, sheet);
     const table = el('table', { class: 'grid' });
     // Fixed layout with explicit widths so columns can be resized; the table is as wide as its columns.
@@ -238,7 +238,8 @@ const Views = (() => {
     cg.appendChild(el('col', { style: 'width:22px' }));
     let total = 22;
     for (const col of columns) { const w = Model.columnWidth(doc, col); total += w; cg.appendChild(el('col', { 'data-col': col, style: `width:${w}px` })); }
-    cg.appendChild(el('col', { style: 'width:110px' })); total += 110;
+    const addW = hiddenCount ? 200 : 110; // room for "+ column" and the "N hidden" pill side by side
+    cg.appendChild(el('col', { style: `width:${addW}px` })); total += addW;
     table.appendChild(cg);
     table.style.width = total + 'px';
     const thead = el('thead', {});

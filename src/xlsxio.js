@@ -20,6 +20,7 @@ const XlsxIO = (() => {
     column_widths: 'Grid column widths in pixels, name:px pairs; also used for the Excel column widths',
     word_target: 'Word target for the whole workbook (0 = none); per-section targets go in the target column on heading rows',
     protect_headers: 'yes/no: protect the header row of chapter sheets in Excel (data cells stay editable; Review → Unprotect Sheet to rename columns)',
+    contents_sheet: 'yes/no: write a .contents sheet listing every heading with a link to it (rewritten on every save, not shown in SheetWriter)',
     status_column: 'Column whose values show as coloured chips (any name; set in Settings → Column roles)',
     target_column: 'Column holding per-section word targets on heading rows (any name; set in Settings → Column roles)',
     track_updated: 'yes/no: keep an ".updated" column with the time each row was last edited in SheetWriter',
@@ -91,6 +92,7 @@ const XlsxIO = (() => {
     let n = String(name || 'Sheet').replace(/[\[\]:*?\/\\]/g, ' ').trim();
     if (n.startsWith("'")) n = n.slice(1);
     if (n.endsWith("'")) n = n.slice(0, -1);
+    if (n.startsWith('.')) n = n.slice(1); // dotted sheet names are SheetWriter's own
     return (n || 'Sheet').slice(0, 31);
   }
 
@@ -114,6 +116,7 @@ const XlsxIO = (() => {
         case 'word_target': { const n = parseInt(value.replace(/\s/g, ''), 10); doc.settings.wordTarget = n > 0 ? n : 0; break; }
         case 'status_column': doc.settings.roles.status = value.trim(); break;
         case 'protect_headers': doc.settings.protectHeaders = yes(value); break;
+        case 'contents_sheet': doc.settings.contentsSheet = yes(value); break;
         case 'target_column': doc.settings.roles.target = value.trim(); break;
         case 'column_widths': {
           const w = {};
@@ -161,6 +164,7 @@ const XlsxIO = (() => {
       ['column_widths', Object.entries(doc.settings.widths || {}).map(([k, v]) => `${k}:${v}`).join(', ')],
       ['word_target', String(doc.settings.wordTarget || 0)],
       ['protect_headers', doc.settings.protectHeaders === false ? 'no' : 'yes'],
+      ['contents_sheet', doc.settings.contentsSheet === false ? 'no' : 'yes'],
       ['status_column', (doc.settings.roles && doc.settings.roles.status) || ''],
       ['target_column', (doc.settings.roles && doc.settings.roles.target) || ''],
       ['track_updated', doc.settings.trackUpdated ? 'yes' : 'no'],
@@ -285,7 +289,8 @@ const XlsxIO = (() => {
     const sws = wb.getWorksheet(SETTINGS_SHEET) || wb.getWorksheet(LEGACY_SETTINGS_SHEET);
     if (sws) readSettings(sws, doc);
     let mainCased = !!sws; // without a settings sheet, adopt the casing used in the file
-    const sheets = orderedSheets(wb).filter(ws => ws.name !== SETTINGS_SHEET && ws.name !== LEGACY_SETTINGS_SHEET);
+    // Sheets whose names start with a dot are SheetWriter's own (.sheetwriter, .contents) and are regenerated on save.
+    const sheets = orderedSheets(wb).filter(ws => !ws.name.startsWith('.') && ws.name !== LEGACY_SETTINGS_SHEET);
 
     for (const ws of sheets) {
       const headers = readHeaders(ws);
@@ -387,11 +392,13 @@ const XlsxIO = (() => {
     wb.modified = new Date();
     if (doc.settings.title) wb.title = doc.settings.title;
 
-    const usedNames = new Set([SETTINGS_SHEET.toLowerCase(), LEGACY_SETTINGS_SHEET.toLowerCase()]);
+    const usedNames = new Set([SETTINGS_SHEET.toLowerCase(), LEGACY_SETTINGS_SHEET.toLowerCase(), '.contents']);
+    const sheetNames = new Map(); // model sheet → name written to the file
     for (const s of doc.sheets) {
       let name = safeSheetName(s.name), base = name, k = 2;
       while (usedNames.has(name.toLowerCase())) name = (base.slice(0, 28) + ' ' + k++);
       usedNames.add(name.toLowerCase());
+      sheetNames.set(s, name);
       const ws = wb.addWorksheet(name);
       if (s.kind !== 'chapter') { copySheet(sources.get(s.name), s, ws); continue; }
 
@@ -439,8 +446,37 @@ const XlsxIO = (() => {
         } catch (e) { /* optional */ }
       }
     }
+    if (doc.settings.contentsSheet !== false) await writeContents(wb, doc, sheetNames);
     await writeSettings(wb, doc);
     return wb.xlsx.writeBuffer();
+  }
+
+  const colLetter = n => { let s = ''; for (let x = n; x > 0; x = Math.floor((x - 1) / 26)) s = String.fromCharCode(65 + ((x - 1) % 26)) + s; return s; };
+  /** A ".contents" sheet: every heading with its number, section words, and an internal link to the row. */
+  async function writeContents(wb, doc, sheetNames) {
+    const ws = wb.addWorksheet('.contents');
+    ws.columns = [
+      { header: 'no', key: 'no', width: 10 }, { header: 'heading', key: 'heading', width: 70 },
+      { header: 'sheet', key: 'sheet', width: 24 }, { header: 'words', key: 'words', width: 9 },
+    ];
+    for (const g of Model.tocEntries(doc, null)) {
+      const s = doc.sheets[g.si];
+      const cols = fileColumns(doc, s);
+      const mainCol = colLetter(cols.indexOf(doc.mainColumn) + 1);
+      const fileName = sheetNames.get(s) || s.name;
+      // Row numbers in the file: header + rows that are actually written (empty rows are skipped).
+      const written = s.rows.filter(r => !Model.rowIsEmpty(doc, s, r));
+      for (const e of g.entries) {
+        const idx = written.indexOf(s.rows[e.i]);
+        const row = ws.addRow({ no: e.number, heading: e.text, sheet: fileName, words: e.words });
+        if (idx >= 0) row.getCell('heading').value = { text: e.text, hyperlink: `#'${fileName.replace(/'/g, "''")}'!${mainCol}${idx + 2}` };
+        row.getCell('heading').alignment = { indent: Math.max(0, e.level - 1) };
+        row.getCell('heading').font = { bold: e.level === 1, color: { argb: 'FF2F6FDB' }, underline: true };
+      }
+    }
+    ws.getRow(1).font = { bold: true };
+    ws.views = [{ state: 'frozen', ySplit: 1 }];
+    try { await ws.protect('', { selectLockedCells: true, selectUnlockedCells: true }); } catch (e) { /* optional */ }
   }
 
   return { load, save, cellText, sortByNo, excelNotes, SETTINGS_SHEET, MIME };

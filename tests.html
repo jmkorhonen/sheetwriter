@@ -522,6 +522,22 @@ test('xlsx: Excel instructions mention every system column and are not read back
   const wb3 = new ExcelJS.Workbook(); await wb3.xlsx.load(await XlsxIO.save(doc, new Map()));
   ok(!(wb3.getWorksheet('Intro').sheetProtection && wb3.getWorksheet('Intro').sheetProtection.sheet), 'protection off by setting');
 });
+test('xlsx: .contents sheet lists headings with internal links and is not loaded back', async () => {
+  const doc = sampleDoc();
+  const buf = await XlsxIO.save(doc, new Map());
+  const wb = new ExcelJS.Workbook(); await wb.xlsx.load(buf);
+  eq(wb.worksheets.map(w => w.name), ['Intro', 'Body', '.contents', '.sheetwriter']);
+  const c = wb.getWorksheet('.contents');
+  eq(c.rowCount, 3);
+  eq(c.getRow(2).getCell(2).value.text, 'Why rows'); eq(c.getRow(2).getCell(2).value.hyperlink, "#'Intro'!D2");
+  eq(XlsxIO.cellText(c.getRow(3).getCell(1).value), '1.6'); eq(c.getRow(3).getCell(3).value, 'Body'); eq(c.getRow(3).getCell(2).value.hyperlink, "#'Body'!D2");
+  const { doc: d2 } = await XlsxIO.load(buf);
+  eq(d2.sheets.map(s => s.name), ['Intro', 'Body'], 'dotted sheets are not loaded as data sheets');
+  doc.settings.contentsSheet = false;
+  const wb2 = new ExcelJS.Workbook(); await wb2.xlsx.load(await XlsxIO.save(doc, new Map()));
+  ok(!wb2.getWorksheet('.contents'), 'switched off by setting');
+  eq(Model.defaultView().gridHidden, ['.words', '.chars', '.updated', '.author'], 'computed and meta columns hidden in Grid by default');
+});
 test('xlsx: a workbook with the old _sheetwriter sheet is read and rewritten as .sheetwriter', async () => {
   const wb = new ExcelJS.Workbook();
   const ch = wb.addWorksheet('Essay'); ch.addRow(['no', 'kind', 'text']); ch.addRow(['1', 'p', 'Hello']);
@@ -530,7 +546,7 @@ test('xlsx: a workbook with the old _sheetwriter sheet is read and rewritten as 
   eq(hasSettings, true); eq(doc.settings.title, 'Old title'); eq(doc.settings.numbering, 'per-sheet');
   eq(doc.sheets.map(s => s.name), ['Essay'], 'the old settings sheet is not treated as a data sheet');
   const wb2 = new ExcelJS.Workbook(); await wb2.xlsx.load(await XlsxIO.save(doc, new Map()));
-  eq(wb2.worksheets.map(w => w.name), ['Essay', '.sheetwriter']);
+  eq(wb2.worksheets.map(w => w.name), ['Essay', '.contents', '.sheetwriter']);
 });
 test('xlsx: plain spreadsheet without a text column is imported by its longest column', async () => {
   const wb = new ExcelJS.Workbook();

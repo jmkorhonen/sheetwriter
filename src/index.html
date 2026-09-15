@@ -36,7 +36,8 @@
     <button id="btn-expand" title="Expand everything (Draft view)">Expand all</button>
   </div>
   <div class="group">
-    <button id="btn-markdown" title="Export a column as Markdown (Ctrl+E), or import a Markdown file">Markdown ▾</button>
+    <button id="btn-export" title="Export as Markdown or Word (Ctrl+E)">Export</button>
+    <button id="btn-import" title="Import Markdown or rich text (or drop a .md file on the window)">Import</button>
     <button id="btn-settings" title="Title, author, main column, numbering, editor preferences">Settings</button>
     <button id="btn-help" title="Keyboard shortcuts and conventions (F1)">?</button>
   </div>
@@ -77,7 +78,7 @@
 
 <dialog id="dlg-export">
   <form method="dialog" class="dlg">
-    <h2>Export Markdown</h2>
+    <h2>Export: Markdown or Word</h2>
     <div class="fields">
       <label>Column to export <select id="ex-column"></select></label>
       <label>Scope <select id="ex-scope"><option value="sheet">This chapter</option><option value="all">Whole workbook</option></select></label>
@@ -91,8 +92,8 @@
     <div class="actions">
       <span id="ex-info" class="muted"></span>
       <button type="button" id="ex-copy">Copy</button>
-      <button type="button" id="ex-download" class="primary">Download .md</button>
-      <button type="button" id="ex-docx" class="primary" title="Word document with heading styles, formatting from the Markdown, indented rows and side notes">Download .docx</button>
+      <button type="button" id="ex-download" class="primary">Download Markdown (.md)</button>
+      <button type="button" id="ex-docx" class="primary" title="Word document with heading styles, formatting from the Markdown, indented rows and side notes">Download Word (.docx)</button>
       <button type="button" data-close>Close</button>
     </div>
   </form>
@@ -137,6 +138,7 @@
       <label class="chk"><input type="checkbox" id="st-track-updated"> <span>Keep an <code>updated</code> column (time of last edit per row)</span></label>
       <label class="chk"><input type="checkbox" id="st-track-author"> <span>Keep an <code>author</code> column (last editor per row, from Author above)</span></label>
       <label class="chk"><input type="checkbox" id="st-protect"> <span>Protect the header row of chapter sheets in Excel (all data stays editable; Review → Unprotect Sheet to rename or remove columns there)</span></label>
+      <label class="chk"><input type="checkbox" id="st-contents"> <span>Write a <code>.contents</code> sheet on save: every heading with its number, word count and a link to its row (for Excel; rewritten each time, not shown here)</span></label>
       <label class="chk"><input type="checkbox" id="st-track-counts"> <span>Keep <code>words</code> and <code>chars</code> columns (per-row counts, written on save; placed before <code>updated</code> and <code>author</code>)</span></label>
       <div class="wide"><div class="fieldlabel">Count words and characters in</div><div id="st-count" class="checks"></div></div>
     </div>
@@ -228,12 +230,12 @@
       <tr><td>Ctrl+S / Ctrl+Shift+S</td><td>Save / Save as</td></tr>
       <tr><td>Ctrl+O</td><td>Open</td></tr>
       <tr><td>Ctrl+Z / Ctrl+Y</td><td>Undo / redo</td></tr>
-      <tr><td>Ctrl+E</td><td>Export Markdown or Word</td></tr>
+      <tr><td>Ctrl+E</td><td>Export dialog: Markdown (.md) or Word (.docx), with the same options</td></tr>
       <tr><td>Ctrl+F / Ctrl+H</td><td>Find / find and replace across the workbook; F3 and Shift+F3 step through matches</td></tr>
       <tr><td>Ctrl+PageUp / PageDown</td><td>Previous / next sheet</td></tr>
     </table>
     <h3>Markdown import</h3>
-    <p>Markdown ▾ → Import, or drop a .md file on the window. One paragraph per row by default; files written one sentence per line are detected and imported line by line; a sentence mode splits paragraphs into p and s rows. Lists become indented rows, and the side-column blockquotes and comments that Export writes are read back into their columns, so export and import round-trip. Import into a new sheet, one sheet per h1, or the current sheet. Several files at once become several sheets.</p>
+    <p>The Import button, or drop a .md file on the window. One paragraph per row by default; files written one sentence per line are detected and imported line by line; a sentence mode splits paragraphs into p and s rows. Lists become indented rows, and the side-column blockquotes and comments that Export writes are read back into their columns, so export and import round-trip. Import into a new sheet, one sheet per h1, or the current sheet. Several files at once become several sheets.</p>
     <h3>Table of contents</h3>
     <p>The Contents button opens a pane listing the headings of this sheet or of all sheets, with numbers and section word counts. Click a heading to jump to it in Draft, Grid or Read view; collapsed sections open on the way. The heading you are working under is highlighted.</p>
     <h3>Status, targets, filter</h3>

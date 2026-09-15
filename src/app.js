@@ -14,7 +14,7 @@
     fileHandle: null, fileName: 'untitled.xlsx', sources: new Map(), dirty: false,
     readScope: 'sheet', readNumbering: '', readColumn: null, readIndented: 'paragraphs',
     focus: null, lastFocus: null, readPos: null,
-    fileMtime: null, copyHandle: null, copyName: '', copyAt: null, copyNeedsPermission: false,
+    fileMtime: null, savedAt: null, copyHandle: null, copyName: '', copyAt: null, copyNeedsPermission: false,
     collapsed: new Set(), editColumn: null, editSheet: null,
     sel: new Set(), selAnchor: null, clipboard: null, // row selection (ids, current sheet) and the internal row clipboard
     // Display state; saved into the workbook on save and restored on load.
@@ -79,6 +79,7 @@
       document.querySelectorAll('#toolbar .views button').forEach(b => b.classList.toggle('active', b.dataset.view === state.view));
       $('#btn-undo').disabled = !history.undo.length;
       $('#btn-redo').disabled = !history.redo.length;
+      $('#btn-filter').classList.toggle('active', !!state.showFilter);
       document.body.classList.toggle('toc-open', state.ui.toc !== 'off');
       $('#btn-toc').classList.toggle('active', state.ui.toc !== 'off');
       renderToc();
@@ -363,7 +364,8 @@
   function docTitle() { return state.doc.settings.title || state.fileName.replace(/\.xlsx$/i, ''); }
   function renderStatus() {
     const doc = state.doc, sheet = doc.sheets[state.si];
-    const parts = [state.fileName, state.dirty ? 'unsaved changes' : 'saved'];
+    const hhmm = t => { const d = new Date(t); const p = n => String(n).padStart(2, '0'); return `${p(d.getHours())}:${p(d.getMinutes())}`; };
+    const parts = [state.fileName, state.dirty ? 'unsaved changes' : (state.savedAt ? `saved ${hhmm(state.savedAt)}` : 'saved')];
     const f = state.lastFocus;
     if (sheet && sheet.kind === 'chapter' && f && f.i != null && sheet.rows[f.i]) {
       const rc = Model.rowCounts(doc, sheet, sheet.rows[f.i]);
@@ -1005,10 +1007,8 @@
   $('#btn-saveas').onclick = () => saveFile(true);
   $('#btn-undo').onclick = () => undo();
   $('#btn-redo').onclick = () => redo();
-  $('#btn-markdown').onclick = e => showMenu(e.currentTarget, [
-    { label: 'Export Markdown…   Ctrl+E', action: () => openExport() },
-    { label: 'Import Markdown…', action: () => openImport('', '') },
-  ]);
+  $('#btn-export').onclick = () => openExport();
+  $('#btn-import').onclick = () => openImport('', '');
   $('#btn-settings').onclick = () => openSettings();
   $('#btn-help').onclick = () => $('#dlg-help').showModal();
   $('#btn-toc').onclick = () => { if (state.ui.toc === 'off') state.ui.toc = state.ui.lastToc || 'sheet'; else { state.ui.lastToc = state.ui.toc; state.ui.toc = 'off'; } render(); };
@@ -1132,6 +1132,7 @@
       if (!hasSettings && !doc.settings.title) doc.settings.title = name.replace(/\.xlsx$/i, '').replace(/_/g, ' ').trim();
       loadDoc(doc, name, handle, sources);
       state.fileMtime = handle ? (mtime || null) : null;
+      state.savedAt = mtime || null; renderStatus();
       if (handle) { addRecent(name, handle); loadCopyHandle(name); }
       if (warnings.length) alert(warnings.join('\n'));
     } catch (e) {
@@ -1144,7 +1145,7 @@
     state.si = doc.sheets.findIndex(s => s.kind === 'chapter'); if (state.si < 0) state.si = 0;
     state.dirty = false; state.lastFocus = null; state.readPos = null; state.collapsed.clear(); state.editColumn = null; state.editSheet = null;
     state.sel.clear(); state.selAnchor = null;
-    state.fileMtime = null; state.copyHandle = null; state.copyName = ''; state.copyAt = null; state.copyNeedsPermission = false;
+    state.fileMtime = null; state.savedAt = null; state.copyHandle = null; state.copyName = ''; state.copyAt = null; state.copyNeedsPermission = false;
     closeFind();
     history.undo.length = 0; history.redo.length = 0; typingKey = null;
     applyViewState(doc.settings.view);
@@ -1191,7 +1192,7 @@
         }
         download(blob, state.fileName);
       }
-      state.dirty = false;
+      state.dirty = false; state.savedAt = Date.now();
       idb.del('autosave').catch(() => {});
       renderStatus(); // nothing in the view changes on save; a full render would lose the scroll position
     } catch (e) {
@@ -1510,6 +1511,7 @@
     $('#st-track-author').checked = !!d.settings.trackAuthor;
     $('#st-track-counts').checked = !!d.settings.trackCounts;
     $('#st-protect').checked = d.settings.protectHeaders !== false;
+    $('#st-contents').checked = d.settings.contentsSheet !== false;
     $('#st-enter').value = prefs.enterMode;
     $('#st-theme').value = prefs.theme || 'auto';
     $('#st-target').value = d.settings.wordTarget || '';
@@ -1550,7 +1552,7 @@
         countColumns: countSel.length === 1 && countSel[0] === sel.value ? [] : countSel,
         wordTarget: Math.max(0, parseInt(String($('#st-target').value).replace(/\s/g, ''), 10) || 0),
         roles: { status: $('#st-role-status').value, target: $('#st-role-target').value },
-        protectHeaders: $('#st-protect').checked,
+        protectHeaders: $('#st-protect').checked, contentsSheet: $('#st-contents').checked,
         trackUpdated: $('#st-track-updated').checked, trackAuthor: $('#st-track-author').checked, trackCounts: $('#st-track-counts').checked };
       const main = sel.value;
       prefs.enterMode = $('#st-enter').value; prefs.indentTrigger = indSel.value; prefs.theme = $('#st-theme').value; applyTheme();
