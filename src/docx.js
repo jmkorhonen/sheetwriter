@@ -3,7 +3,7 @@
  * Docx.build(doc, opts) → Blob. opts as for Exporter.toBlocks. Headings use Word's built-in
  * heading styles (so the navigation pane and a table of contents work), paragraphs keep bold,
  * italic, strikethrough, code and links from the cell Markdown, indented rows are indented,
- * side columns become small indented notes.
+ * side columns become small indented notes, or real footnotes in footnote mode.
  */
 const Docx = (() => {
   const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
@@ -48,11 +48,17 @@ const Docx = (() => {
     };
     block(tokens, '');
     if (!out.length) out.push({ runs: [{ text: String(md) }], prefix: '' });
+    // [^n] markers written by the exporter's footnote mode become footnote-reference runs {fn: n}.
+    for (const p of out) p.runs = p.runs.flatMap(r => {
+      if (r.br || !r.text || !/\[\^\d+\]/.test(r.text)) return [r];
+      return r.text.split(/(\[\^\d+\])/).filter(Boolean).map(t => { const m = /^\[\^(\d+)\]$/.exec(t); return m ? { fn: +m[1] } : { ...r, text: t }; });
+    });
     return out;
   }
 
   function runXml(r) {
     if (r.br) return '<w:r><w:br/></w:r>';
+    if (r.fn) return `<w:r><w:rPr><w:rStyle w:val="FootnoteReference"/></w:rPr><w:footnoteReference w:id="${r.fn}"/></w:r>`;
     const p = [];
     if (r.b) p.push('<w:b/>');
     if (r.i) p.push('<w:i/>');
@@ -68,9 +74,9 @@ const Docx = (() => {
     return `<w:p>${pPr.length ? `<w:pPr>${pPr.join('')}</w:pPr>` : ''}${all.map(runXml).join('')}</w:p>`;
   }
 
-  function bodyXml(doc, opts) {
+  function bodyXml(blocks) {
     const parts = [];
-    for (const b of Exporter.toBlocks(doc, opts)) {
+    for (const b of blocks) {
       if (b.type === 'sheetTitle' || b.type === 'heading') {
         const p = paragraphs(b.text)[0];
         parts.push(paraXml('Heading' + Math.min(b.level, 6), p.runs, 0, ''));
@@ -95,14 +101,26 @@ const Docx = (() => {
 <w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>
 ${heading(1, 32, '<w:b/>')}${heading(2, 28, '<w:b/>')}${heading(3, 26, '<w:b/><w:i/>')}${heading(4, 24, '<w:i/>')}${heading(5, 22, '<w:i/>')}${heading(6, 22, '<w:i/>')}
 <w:style w:type="paragraph" w:styleId="ListParagraph"><w:name w:val="List Paragraph"/><w:basedOn w:val="Normal"/><w:uiPriority w:val="34"/><w:qFormat/><w:pPr><w:ind w:left="720"/><w:contextualSpacing/></w:pPr></w:style>
+<w:style w:type="paragraph" w:styleId="FootnoteText"><w:name w:val="footnote text"/><w:basedOn w:val="Normal"/><w:uiPriority w:val="99"/><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:rPr><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr></w:style>
+<w:style w:type="character" w:styleId="FootnoteReference"><w:name w:val="footnote reference"/><w:uiPriority w:val="99"/><w:rPr><w:vertAlign w:val="superscript"/></w:rPr></w:style>
 <w:style w:type="paragraph" w:styleId="SideNote"><w:name w:val="Side Note"/><w:basedOn w:val="Normal"/><w:pPr><w:ind w:left="720"/><w:spacing w:before="0" w:after="200"/></w:pPr><w:rPr><w:i/><w:color w:val="666666"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:style>
 </w:styles>`;
   const CONTENT_TYPES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>`;
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/footnotes.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>`;
   const RELS = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>`;
   const DOC_RELS = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`;
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes" Target="footnotes.xml"/></Relationships>`;
+  /** word/footnotes.xml: the two separator entries Word expects, then one footnote per note. */
+  function footnotesXml(notes) {
+    const sep = `<w:footnote w:type="separator" w:id="-1"><w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:separator/></w:r></w:p></w:footnote><w:footnote w:type="continuationSeparator" w:id="0"><w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:continuationSeparator/></w:r></w:p></w:footnote>`;
+    const body = (notes || []).map(f => {
+      const runs = [];
+      paragraphs(f.text).forEach((p, k) => { if (k) runs.push({ br: true }); if (p.prefix) runs.push({ text: p.prefix }); runs.push(...p.runs); });
+      return `<w:footnote w:id="${f.n}"><w:p><w:pPr><w:pStyle w:val="FootnoteText"/></w:pPr><w:r><w:rPr><w:rStyle w:val="FootnoteReference"/></w:rPr><w:footnoteRef/></w:r><w:r><w:t xml:space="preserve"> </w:t></w:r>${runs.map(runXml).join('')}</w:p></w:footnote>`;
+    }).join('');
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:footnotes xmlns:w="${W}">${sep}${body}</w:footnotes>`;
+  }
   const APP = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><Application>SheetWriter</Application></Properties>`;
 
@@ -112,9 +130,9 @@ ${heading(1, 32, '<w:b/>')}${heading(2, 28, '<w:b/>')}${heading(3, 26, '<w:b/><w
 <cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${esc(doc.settings.title || '')}</dc:title><dc:creator>${esc(doc.settings.author || '')}</dc:creator><dc:description>${esc(doc.settings.description || '')}</dc:description><dcterms:created xsi:type="dcterms:W3CDTF">${now}</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">${now}</dcterms:modified></cp:coreProperties>`;
   }
 
-  function documentXml(doc, opts) {
+  function documentXml(doc, opts, blocks) {
     return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document xmlns:w="${W}"><w:body>${bodyXml(doc, opts)}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1418" w:right="1418" w:bottom="1418" w:left="1418" w:header="709" w:footer="709" w:gutter="0"/></w:sectPr></w:body></w:document>`;
+<w:document xmlns:w="${W}"><w:body>${bodyXml(blocks || Exporter.toBlocks(doc, opts))}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1418" w:right="1418" w:bottom="1418" w:left="1418" w:header="709" w:footer="709" w:gutter="0"/></w:sectPr></w:body></w:document>`;
   }
 
   async function build(doc, opts = {}) {
@@ -122,12 +140,15 @@ ${heading(1, 32, '<w:b/>')}${heading(2, 28, '<w:b/>')}${heading(3, 26, '<w:b/><w
     zip.file('[Content_Types].xml', CONTENT_TYPES);
     zip.file('_rels/.rels', RELS);
     zip.file('word/_rels/document.xml.rels', DOC_RELS);
-    zip.file('word/document.xml', documentXml(doc, opts));
+    const blocks = Exporter.toBlocks(doc, opts);
+    const fn = blocks.find(b => b.type === 'footnotes');
+    zip.file('word/document.xml', documentXml(doc, opts, blocks));
+    zip.file('word/footnotes.xml', footnotesXml(fn ? fn.notes : []));
     zip.file('word/styles.xml', STYLES);
     zip.file('docProps/core.xml', coreXml(doc));
     zip.file('docProps/app.xml', APP);
     return zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', compression: 'DEFLATE' });
   }
 
-  return { build, documentXml, paragraphs, MIME: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' };
+  return { build, documentXml, footnotesXml, paragraphs, MIME: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' };
 })();

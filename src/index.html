@@ -85,8 +85,9 @@
       <label>Numbering <select id="ex-numbering"><option value="">none</option><option value="headings">headings</option><option value="all">headings and paragraphs</option></select></label>
       <label>Indented rows as <select id="ex-indented"><option value="paragraphs">paragraphs</option><option value="lists">nested lists</option></select></label>
       <label>Side column <select id="ex-side"><option value="">none</option></select></label>
-      <label>Side column as <select id="ex-sidemode"><option value="quote">blockquote</option><option value="comment">HTML comment (hidden)</option></select></label>
+      <label>Side column as <select id="ex-sidemode"><option value="quote">blockquote</option><option value="comment">HTML comment (hidden)</option><option value="footnote">footnotes</option></select></label>
       <label class="chk"><input type="checkbox" id="ex-titles"> Sheet names as top headings</label>
+      <div class="wide about preset-row"><label style="flex-direction:row;align-items:center;gap:6px">Preset <select id="ex-preset" title="Saved sets of these options; kept in the workbook"><option value="">(none)</option></select></label><button type="button" class="small" id="ex-preset-save" title="Save the options above under a name, in the workbook">Save as…</button><button type="button" class="small" id="ex-preset-del" title="Remove the chosen preset" disabled>Delete</button></div>
     </div>
     <textarea id="ex-preview" readonly spellcheck="false"></textarea>
     <div class="actions">
@@ -231,7 +232,7 @@
       <tr><td>Ctrl+S / Ctrl+Shift+S</td><td>Save / Save as</td></tr>
       <tr><td>Ctrl+O</td><td>Open</td></tr>
       <tr><td>Ctrl+Z / Ctrl+Y</td><td>Undo / redo</td></tr>
-      <tr><td>Ctrl+E</td><td>Export dialog: Markdown (.md), Word (.docx) or OpenDocument text (.odt), with the same options</td></tr>
+      <tr><td>Ctrl+E</td><td>Export dialog: Markdown (.md), Word (.docx) or OpenDocument text (.odt), with the same options; a side column as blockquotes, comments or footnotes; presets saved in the workbook</td></tr>
       <tr><td>Ctrl+F / Ctrl+H</td><td>Find / find and replace across the workbook; F3 and Shift+F3 step through matches</td></tr>
       <tr><td>Ctrl+PageUp / PageDown</td><td>Previous / next sheet</td></tr>
     </table>

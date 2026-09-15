@@ -1416,6 +1416,38 @@
       fill($('#ex-side'), sideCols, $('#ex-side').value, true);
     };
     refreshCols();
+    const presets = () => state.doc.settings.exportPresets || (state.doc.settings.exportPresets = {});
+    const presetSel = $('#ex-preset');
+    const refreshPresets = current => {
+      presetSel.innerHTML = '';
+      presetSel.appendChild(Views.el('option', { value: '' }, Object.keys(presets()).length ? '(custom)' : '(none saved)'));
+      Object.keys(presets()).sort().forEach(n => presetSel.appendChild(Views.el('option', { value: n, selected: n === current }, n)));
+      $('#ex-preset-del').disabled = !presetSel.value;
+    };
+    const readPreset = () => ({ column: $('#ex-column').value, scope: scopeSel.value === 'all' ? 'all' : 'sheet', numbering: $('#ex-numbering').value, indented: $('#ex-indented').value, side: $('#ex-side').value, sideMode: $('#ex-sidemode').value, titles: $('#ex-titles').checked });
+    const applyPreset = p => {
+      scopeSel.value = p.scope === 'sheet' ? 'sheet' : 'all';
+      refreshCols();
+      if ([...$('#ex-column').options].some(o => o.value === p.column)) $('#ex-column').value = p.column;
+      refreshCols();
+      $('#ex-numbering').value = p.numbering || ''; $('#ex-indented').value = p.indented || 'paragraphs';
+      $('#ex-side').value = [...$('#ex-side').options].some(o => o.value === p.side) ? p.side : '';
+      $('#ex-sidemode').value = p.sideMode || 'quote'; $('#ex-titles').checked = !!p.titles;
+    };
+    refreshPresets('');
+    $('#ex-preset-save').onclick = async () => {
+      const name = await askText('Preset name', presetSel.value || '');
+      if (name == null || !name.trim()) return;
+      const n = name.trim().replace(/[;=]/g, ' ');
+      const p = readPreset();
+      mutate(d => { d.settings.exportPresets = d.settings.exportPresets || {}; d.settings.exportPresets[n] = p; }, { noRender: true });
+      refreshPresets(n);
+    };
+    $('#ex-preset-del').onclick = () => {
+      const n = presetSel.value; if (!n) return;
+      mutate(d => { delete d.settings.exportPresets[n]; }, { noRender: true });
+      refreshPresets('');
+    };
     const update = () => {
       const md = Exporter.toMarkdown(state.doc, {
         column: $('#ex-column').value,
@@ -1428,7 +1460,12 @@
       $('#ex-preview').value = md;
       $('#ex-info').textContent = `${Model.wordCount(md)} words · ${md.length} characters`;
     };
-    dlgExport.oninput = dlgExport.onchange = e => { if (e.target.id === 'ex-scope' || e.target.id === 'ex-column') refreshCols(); update(); };
+    dlgExport.oninput = dlgExport.onchange = e => {
+      if (e.target.id === 'ex-preset') { const p = presets()[presetSel.value]; if (p) applyPreset(p); $('#ex-preset-del').disabled = !presetSel.value; update(); return; }
+      if (e.target.id === 'ex-scope' || e.target.id === 'ex-column') refreshCols();
+      if (presetSel.value && e.target.closest('.fields')) { presetSel.value = ''; $('#ex-preset-del').disabled = true; } // options changed by hand: no longer the preset
+      update();
+    };
     $('#ex-copy').onclick = async () => {
       try { await navigator.clipboard.writeText($('#ex-preview').value); $('#ex-copy').textContent = 'Copied ✓'; setTimeout(() => $('#ex-copy').textContent = 'Copy', 1500); }
       catch (e) { $('#ex-preview').select(); document.execCommand('copy'); }

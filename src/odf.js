@@ -45,6 +45,7 @@ const Odf = (() => {
       + `<style:style style:name="Text_20_body" style:display-name="Text body" style:family="paragraph" style:parent-style-name="Standard" style:class="text"><style:paragraph-properties fo:margin-top="0cm" fo:margin-bottom="0.25cm"/></style:style>`
       + `<style:style style:name="Heading" style:family="paragraph" style:parent-style-name="Standard" style:next-style-name="Text_20_body" style:class="text"><style:paragraph-properties fo:margin-top="0.42cm" fo:margin-bottom="0.21cm" fo:keep-with-next="always"/><style:text-properties style:font-name="Liberation Sans" fo:font-size="14pt"/></style:style>`
       + HEADINGS.map(([n, sz, w, st]) => `<style:style style:name="Heading_20_${n}" style:display-name="Heading ${n}" style:family="paragraph" style:parent-style-name="Heading" style:next-style-name="Text_20_body" style:default-outline-level="${n}" style:class="text"><style:text-properties fo:font-size="${sz}" fo:font-weight="${w}"${st ? ` fo:font-style="${st}"` : ''}/></style:style>`).join('')
+      + `<style:style style:name="Footnote" style:family="paragraph" style:parent-style-name="Standard" style:class="extra"><style:paragraph-properties fo:margin-left="0.6cm" fo:margin-bottom="0.1cm" fo:text-indent="-0.6cm"/><style:text-properties fo:font-size="9pt"/></style:style>`
       + `<style:style style:name="Side_20_Note" style:display-name="Side Note" style:family="paragraph" style:parent-style-name="Text_20_body"><style:paragraph-properties fo:margin-left="1.27cm" fo:margin-bottom="0.35cm"/><style:text-properties fo:font-size="9pt" fo:font-style="italic" fo:color="#666666"/></style:style>`
       + `</office:styles></office:document-styles>`;
   }
@@ -56,14 +57,18 @@ const Odf = (() => {
       if (!spanStyles.has(key)) spanStyles.set(key, 'T_' + key);
       return spanStyles.get(key);
     };
+    const blocks = Exporter.toBlocks(doc, opts);
+    const fnBlock = blocks.find(b => b.type === 'footnotes');
+    const fnText = new Map((fnBlock ? fnBlock.notes : []).map(f => [f.n, f.text]));
     const runs = rs => rs.map(r => {
       if (r.br) return '<text:line-break/>';
+      if (r.fn) return `<text:note text:id="ftn${r.fn}" text:note-class="footnote"><text:note-citation>${r.fn}</text:note-citation><text:note-body>${Docx.paragraphs(fnText.get(r.fn) || '').map(p => `<text:p text:style-name="Footnote">${odfText(p.prefix || '')}${runs(p.runs)}</text:p>`).join('')}</text:note-body></text:note>`;
       const st = styleFor(r);
       return st ? `<text:span text:style-name="${st}">${odfText(r.text || '')}</text:span>` : odfText(r.text || '');
     }).join('');
     const body = [];
     let maxIndent = 0;
-    for (const b of Exporter.toBlocks(doc, opts)) {
+    for (const b of blocks) {
       if (b.type === 'sheetTitle' || b.type === 'heading') {
         const p = Docx.paragraphs(b.text)[0];
         const lv = Math.min(b.level, 6);

@@ -13,7 +13,10 @@
  *   sheetTitles: emit "# <sheet name>" per chapter (default false)
  *   numbering:   false | 'headings' | 'all' (true = 'all'): prepend computed numbers
  *   indented:    'paragraphs' (default) | 'lists': how rows with indent > 0 are written
- *   side:        null | {column, mode: 'quote'|'comment'}
+ *   side:        null | {column, mode: 'quote'|'comment'|'footnote'}
+ *                footnote: a [^n] marker at the end of the paragraph or heading per side value, and one
+ *                {type: 'footnotes', notes: [{n, text}]} block at the very end (Markdown footnote definitions;
+ *                Word and OpenDocument turn them into real footnotes)
  * }
  * Row kinds: hN heading · p paragraph · s continues previous paragraph · x omitted.
  * Cell text is already Markdown and passes through unchanged.
@@ -29,6 +32,8 @@ const Exporter = (() => {
     const numHead = numAll || opts.numbering === 'headings';
     const lists = opts.indented === 'lists';
     const blocks = [];
+    const foot = opts.side && opts.side.column && opts.side.mode === 'footnote' ? [] : null;
+    const marks = values => (foot ? values.map(v => { foot.push({ n: foot.length + 1, text: v }); return `[^${foot.length}]`; }).join('') : '');
     for (const { s, i } of selected) {
       let first = true;
       const push = b => { b.first = first; first = false; blocks.push(b); };
@@ -39,8 +44,8 @@ const Exporter = (() => {
         if (!para) return;
         const text = para.text.join(' ').trim();
         if (text) {
-          push({ type: 'para', si: i, i: para.i, text: (numAll ? para.num + ' ' : '') + text, indent: para.indent, list: lists && para.indent > 0, num: para.num });
-          const sb = sideBlock(para.side, opts.side);
+          push({ type: 'para', si: i, i: para.i, text: (numAll ? para.num + ' ' : '') + text + marks(para.side), indent: para.indent, list: lists && para.indent > 0, num: para.num });
+          const sb = foot ? null : sideBlock(para.side, opts.side);
           if (sb) push({ type: 'side', si: i, i: para.i, ...sb });
         }
         para = null;
@@ -56,8 +61,8 @@ const Exporter = (() => {
           // A leading "#" typed into the cell is a heading marker, not text.
           const htext = (text || String(r[doc.mainColumn] || '').trim()).replace(/^#{1,6}[ \t]+/, '');
           if (!htext) return;
-          push({ type: 'heading', si: i, i: k, level: Math.min(6, hl + offset), text: (numHead ? num.numbers[k] + ' ' : '') + htext, num: num.numbers[k] });
-          const sb = sideBlock(sideVal ? [sideVal] : [], opts.side);
+          push({ type: 'heading', si: i, i: k, level: Math.min(6, hl + offset), text: (numHead ? num.numbers[k] + ' ' : '') + htext + marks(sideVal ? [sideVal] : []), num: num.numbers[k] });
+          const sb = foot ? null : sideBlock(sideVal ? [sideVal] : [], opts.side);
           if (sb) push({ type: 'side', si: i, i: k, ...sb });
           return;
         }
@@ -71,6 +76,7 @@ const Exporter = (() => {
       });
       flush();
     }
+    if (foot && foot.length) blocks.push({ type: 'footnotes', notes: foot, first: false });
     return blocks;
   }
 
@@ -87,6 +93,7 @@ const Exporter = (() => {
   function blockMarkdown(b) {
     if (b.type === 'heading' || b.type === 'sheetTitle') return '#'.repeat(b.level) + ' ' + b.text;
     if (b.type === 'para' && b.list) return '  '.repeat(b.indent - 1) + '- ' + b.text;
+    if (b.type === 'footnotes') return b.notes.map(f => `[^${f.n}]: ${f.text.replace(/\s*\n\s*/g, ' ')}`).join('\n');
     return b.text;
   }
 

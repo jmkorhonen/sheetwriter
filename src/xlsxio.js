@@ -43,6 +43,25 @@ const XlsxIO = (() => {
     readme: 'Documentation',
   };
   const LINK_KEYS = ['app_url', 'download', 'repo', 'readme'];
+  const PRESET_DESC = 'Export preset (Export dialog → Preset). column, scope (all/sheet), numbering (none/headings/all), indented (paragraphs/lists), side (column or empty), side_as (quote/comment/footnote), titles (yes/no)';
+  const PRESET_KEYS = { column: 'column', scope: 'scope', numbering: 'numbering', indented: 'indented', side: 'side', side_as: 'sideMode', titles: 'titles' };
+  function presetToText(p) {
+    return Object.entries(PRESET_KEYS).map(([k, f]) => `${k}=${f === 'titles' ? (p.titles ? 'yes' : 'no') : (p[f] == null ? '' : String(p[f]))}`).join('; ');
+  }
+  function presetFromText(text) {
+    const p = { column: '', scope: 'all', numbering: '', indented: 'paragraphs', side: '', sideMode: 'quote', titles: false };
+    for (const part of String(text).split(';')) {
+      const m = /^\s*([a-z_]+)\s*=\s*(.*?)\s*$/.exec(part);
+      if (!m || !PRESET_KEYS[m[1]]) continue;
+      const f = PRESET_KEYS[m[1]];
+      if (f === 'titles') p.titles = yes(m[2]); else p[f] = m[2];
+    }
+    if (!['all', 'sheet'].includes(p.scope)) p.scope = 'all';
+    if (!['', 'none', 'headings', 'all'].includes(p.numbering)) p.numbering = ''; if (p.numbering === 'none') p.numbering = '';
+    if (!['paragraphs', 'lists'].includes(p.indented)) p.indented = 'paragraphs';
+    if (!['quote', 'comment', 'footnote'].includes(p.sideMode)) p.sideMode = 'quote';
+    return p;
+  }
 
   /* Instructions written into the .sheetwriter sheet for people who open the workbook in Excel.
    * RELEASE CHECKLIST: revise these lines whenever the file format changes, a system column is added,
@@ -139,6 +158,7 @@ const XlsxIO = (() => {
         case 'modified': case 'app': break;
         default:
           if (LINK_KEYS.includes(key)) break;
+          if (key.startsWith('export:') && key.length > 7) { doc.settings.exportPresets[key.slice(7).trim()] = presetFromText(value); break; }
           extra[key] = [value, desc];
       }
     }
@@ -182,7 +202,8 @@ const XlsxIO = (() => {
       ['repo', APP.repo],
       ['readme', APP.readme],
     ];
-    const out = rows.map(r => ({ key: r[0], value: r[1], desc: KNOWN[r[0]] || '', link: LINK_KEYS.includes(r[0]) }));
+    for (const [name, p] of Object.entries(doc.settings.exportPresets || {})) rows.push(['export:' + name, presetToText(p)]);
+    const out = rows.map(r => ({ key: r[0], value: r[1], desc: KNOWN[r[0]] || (r[0].startsWith('export:') ? PRESET_DESC : ''), link: LINK_KEYS.includes(r[0]) }));
     for (const [k, v] of Object.entries(doc.settings.extra || {})) out.push({ key: k, value: v[0] || '', desc: v[1] || '' });
     out.push({ key: '', value: '', desc: '', note: true });
     excelNotes(doc).forEach((line, k) => out.push({ key: '', value: line, desc: '', note: true, bold: k === 0 || /^[A-Z ]+:$/.test(line) }));
@@ -558,5 +579,5 @@ const XlsxIO = (() => {
     try { await ws.protect('', { selectLockedCells: true, selectUnlockedCells: true }); } catch (e) { /* optional */ }
   }
 
-  return { load, loadFromSheets, save, cellText, sortByNo, excelNotes, settingsRows, contentsEntries, fileColumns, widthFor, safeSheetName, colLetter, SETTINGS_SHEET, MIME };
+  return { load, loadFromSheets, save, cellText, sortByNo, excelNotes, settingsRows, contentsEntries, presetToText, presetFromText, fileColumns, widthFor, safeSheetName, colLetter, SETTINGS_SHEET, MIME };
 })();

@@ -82,7 +82,9 @@ Press `?` in the toolbar or F1 for the full list.
 - **Status and targets**: the column given the status role shows coloured chips on cards and tints Grid cells; the target column's number on a heading row sets a word target for that section, and Settings holds one for the workbook. The Filter button hides rows by text or `column:value` in Draft and Grid.
 - **Formatting keys**: Ctrl+B, Ctrl+I and Ctrl+K wrap the selection in Markdown bold, italic or a link. Pasting rich text from Word or a browser into the import dialog converts it to Markdown.
 - **Appearance**: light, dark or follow the system, in Settings. Read view has a print stylesheet.
-- **Export Markdown** (Export button or Ctrl+E): any column as one document, whole workbook or one chapter, with the same options plus a side column as blockquotes or hidden comments.
+- **Export Markdown** (Export button or Ctrl+E): any column as one document, whole workbook or one chapter, with the same options plus a side column as blockquotes, hidden comments or footnotes.
+- **Footnotes**: with a side column set to "footnotes", each value becomes a footnote on its paragraph or heading: `[^1]` markers and definitions in Markdown, real footnotes in Word and OpenDocument. A `sources` column exported this way gives a referenced manuscript.
+- **Export presets**: the Export dialog saves its options under a name (Preset → Save as…). Presets live in the `.sheetwriter` sheet as readable `export:name` rows, so they travel with the workbook and can be edited in Excel.
 
 ## Develop
 
