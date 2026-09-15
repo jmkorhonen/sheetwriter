@@ -49,7 +49,7 @@ const XlsxIO = (() => {
    * or what is safe to edit in Excel changes. tests.html checks that every system column is mentioned. */
   function excelNotes(doc) {
     const main = doc.mainColumn;
-    const sys = [...Model.RESERVED, ...Model.COMPUTED, ...Model.META].join(', ');
+    const sys = [...Model.RESERVED, ...Model.COMPUTED, ...Model.META, Model.IDENT].join(', ');
     return [
       `HOW TO WORK WITH THIS WORKBOOK IN EXCEL (written by ${APP.name} ${APP.version}; this block is rewritten on every save)`,
       'SAFE TO DO IN EXCEL:',
@@ -60,8 +60,9 @@ const XlsxIO = (() => {
       '• Add columns with any name that does not start with a dot or an underscore. Rename your own columns (then reassign roles in SheetWriter Settings if needed).',
       '• Add key/value rows to this sheet: they are kept. Edit the values of the settings rows above.',
       `• Add sheets without a ${main} column (data sheets): they are copied through unchanged, formatting included.`,
+      `• Colour cells, change fonts, add borders and comments: on chapter sheets they follow the row through the hidden ${Model.IDENT} column (unhide it if you are curious; leave its values alone, copied rows get a fresh id).`,
       'LOST ON THE NEXT SAVE FROM SHEETWRITER:',
-      '• Cell colours, fonts, comments and formulas in chapter sheets (they are kept in data sheets). Hyperlinks survive as Markdown links.',
+      '• Formulas, number formats, row heights and merged cells in chapter sheets (data sheets are kept as they are). Bold, italic and font size follow the row kind. Hyperlinks survive as Markdown links.',
       `• ${Model.COMPUTED.join(', ')}, ${Model.META.join(', ')}: rewritten from SheetWriter’s own data.`,
       'BREAKS THE FILE OR ITS STRUCTURE:',
       `• Renaming or deleting the dotted columns (${sys}) or the ${main} column, or giving two columns the same name. The header row is protected for this reason (Review → Unprotect Sheet lifts it).`,
@@ -248,9 +249,10 @@ const XlsxIO = (() => {
     for (let i = 0; i < headers.length; i++) {
       if (!headers[i]) headers[i] = 'col' + (i + 1);
       const low = headers[i].toLowerCase();
-      const sys = [...Model.RESERVED, ...Model.META, ...Model.COMPUTED];
+      const sys = [...Model.RESERVED, ...Model.META, ...Model.COMPUTED, Model.IDENT];
+      const legacy = [...Model.RESERVED, ...Model.META, ...Model.COMPUTED]; // bare names written before 0.10; a plain "id" column stays the user's
       if (sys.includes(low)) headers[i] = low; // .kind etc.
-      else if (sys.includes('.' + low) && !headers.some(h => h.toLowerCase() === '.' + low)) headers[i] = '.' + low; // files written before 0.10: kind -> .kind
+      else if (legacy.includes('.' + low) && !headers.some(h => h.toLowerCase() === '.' + low)) headers[i] = '.' + low; // files written before 0.10: kind -> .kind
       if (low === mainLower) headers[i] = doc.mainColumn;
     }
     const columns = dedupeColumns(headers);
@@ -283,7 +285,50 @@ const XlsxIO = (() => {
   async function load(buffer) {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(buffer);
-    return loadFromSheets(orderedSheets(wb), name => wb.getWorksheet(name));
+    const res = loadFromSheets(orderedSheets(wb), name => wb.getWorksheet(name));
+    res.formats = readFormats(wb, res.doc);
+    return res;
+  }
+  const APP_GREY = 'FF8A8A8A';
+  /** Formatting people add in Excel on chapter sheets, keyed by row id then column name: {fill, border, font: {name, color, strike, underline}, note}.
+   *  Bold, italic and size are the app's (they follow the row kind) and are not kept. */
+  function readFormats(wb, doc) {
+    const formats = new Map();
+    for (const s of doc.sheets) {
+      if (s.kind !== 'chapter' || !s.columns.includes(Model.IDENT)) continue;
+      const ws = wb.getWorksheet(s.name);
+      if (!ws) continue;
+      const names = readHeaders(ws);
+      const idCol = names.findIndex(h => h.toLowerCase() === Model.IDENT) + 1;
+      if (!idCol) continue;
+      const lowerCols = new Map(s.columns.map(c => [c.toLowerCase(), c]));
+      ws.eachRow((row, rn) => {
+        if (rn === 1) return;
+        const id = cellText(row.getCell(idCol).value).trim();
+        if (!id || formats.has(id)) return;
+        const cells = {};
+        row.eachCell({ includeEmpty: false }, (cell, cn) => {
+          const col = lowerCols.get((names[cn - 1] || '').toLowerCase());
+          if (!col || col === Model.IDENT) return;
+          const f = {};
+          const fill = cell.fill;
+          if (fill && fill.type === 'pattern' && fill.pattern && fill.pattern !== 'none' && fill.fgColor) f.fill = fill;
+          const b = cell.border;
+          if (b && ['top', 'left', 'bottom', 'right'].some(k => b[k] && b[k].style)) f.border = b;
+          const fo = cell.font || {};
+          const font = {};
+          if (fo.name && fo.name !== 'Calibri') font.name = fo.name; // Calibri: Excel's default, written explicitly by Excel on every styled cell
+          if (fo.color && fo.color.argb !== APP_GREY && fo.color.theme !== 1) font.color = fo.color; // theme 1: default text colour
+          if (fo.strike) font.strike = true;
+          if (fo.underline) font.underline = fo.underline;
+          if (Object.keys(font).length) f.font = font;
+          if (cell.note) f.note = cell.note;
+          if (Object.keys(f).length) cells[col] = f;
+        });
+        if (Object.keys(cells).length) formats.set(id, { cells });
+      });
+    }
+    return formats;
   }
   /** Build a document from worksheet-like objects ({name, rowCount, columnCount, getRow(r).getCell(c).value}),
    *  in workbook order. Used for XLSX (ExcelJS worksheets) and ODS (adapters). Only ExcelJS sheets can be
@@ -348,6 +393,12 @@ const XlsxIO = (() => {
       doc.sheets.push(Model.newChapter('Chapter 1'));
     }
     Model.ensureMetaColumns(doc);
+    // Duplicate row ids (a row copied in Excel): the first in file order is the original and keeps the id; the rest get a fresh one on save.
+    const seen = new Set();
+    for (const s of doc.sheets) if (s.kind === 'chapter' && s.columns.includes(Model.IDENT)) for (const r of s.rows) {
+      const id = String(r[Model.IDENT] || '').trim();
+      if (id && seen.has(id)) r[Model.IDENT] = ''; else if (id) seen.add(id);
+    }
     return { doc, sources, warnings, hasSettings: !!sws };
   }
 
@@ -388,11 +439,13 @@ const XlsxIO = (() => {
   function fileColumns(doc, s) {
     const computed = s.columns.filter(c => Model.isComputed(doc, c));
     const meta = s.columns.filter(c => Model.isMeta(doc, c));
-    return s.columns.filter(c => !Model.isMeta(doc, c) && !Model.isComputed(doc, c)).concat(computed, meta);
+    const ident = s.columns.filter(c => c === Model.IDENT);
+    return s.columns.filter(c => !Model.isMeta(doc, c) && !Model.isComputed(doc, c) && c !== Model.IDENT).concat(computed, meta, ident);
   }
 
-  /** → ArrayBuffer-like (Uint8Array/Buffer) suitable for new Blob([...]) */
-  async function save(doc, sources = new Map()) {
+  /** → ArrayBuffer-like (Uint8Array/Buffer) suitable for new Blob([...]). formats: from load(), applied back by row id. */
+  async function save(doc, sources = new Map(), formats = new Map()) {
+    Model.ensureRowIds(doc);
     const wb = new ExcelJS.Workbook();
     wb.creator = doc.settings.author || APP.name;
     wb.lastModifiedBy = APP.name;
@@ -434,8 +487,18 @@ const XlsxIO = (() => {
         else if (r['.kind'] === 'x') row.font = { italic: true, color: { argb: 'FF8A8A8A' } };
         const ind = num.indents[i] + (r['.kind'] === 's' ? 1 : 0);
         if (!hl && ind) row.getCell(doc.mainColumn).alignment = { wrapText: true, vertical: 'top', indent: ind };
-        for (const c of columns) if (Model.isMeta(doc, c) || Model.isComputed(doc, c)) row.getCell(c).font = { color: { argb: 'FF8A8A8A' }, size: 9 };
+        for (const c of columns) if (Model.isMeta(doc, c) || Model.isComputed(doc, c) || c === Model.IDENT) row.getCell(c).font = { color: { argb: APP_GREY }, size: 9 };
+        const kept = formats.get(r[Model.IDENT]);
+        if (kept) for (const [c, f] of Object.entries(kept.cells)) {
+          if (!columns.includes(c)) continue;
+          const cell = row.getCell(c);
+          if (f.fill) cell.fill = f.fill;
+          if (f.border) cell.border = f.border;
+          if (f.font) cell.font = { ...(cell.font || {}), ...f.font };
+          if (f.note) cell.note = f.note;
+        }
       });
+      if (columns.includes(Model.IDENT)) ws.getColumn(columns.indexOf(Model.IDENT) + 1).hidden = true;
       const hdr = ws.getRow(1);
       hdr.font = { bold: true };
       hdr.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE9E9E9' } };

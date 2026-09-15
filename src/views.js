@@ -246,7 +246,7 @@ const Views = (() => {
     const hr = el('tr', {});
     hr.appendChild(el('th', { class: 'handle-col' }, ''));
     for (const col of columns) {
-      const isMain = col === doc.mainColumn, isRes = RESERVED.includes(col), isMeta = Model.isMeta(doc, col) || Model.isComputed(doc, col);
+      const isMain = col === doc.mainColumn, isRes = RESERVED.includes(col), isMeta = Model.isMeta(doc, col) || Model.isComputed(doc, col) || col === Model.IDENT;
       const draggable = !isRes && !isMeta;
       const th = el('th', { class: (isMain ? 'main' : '') + (isRes ? ' reserved' : '') + (col === '.no' ? ' num' : '') + (isMeta ? ' meta' : '') + (draggable ? ' col-drag' : ''), 'data-col': col, draggable: draggable ? 'true' : null });
       if (!isRes && !isMeta && ctx.editColumn === col) {
@@ -300,7 +300,7 @@ const Views = (() => {
           continue;
         }
         if (col === '.indent') { tr.appendChild(el('td', { class: 'indent' }, Model.indentOf(row) || '')); continue; }
-        if (Model.isMeta(doc, col)) { tr.appendChild(el('td', { class: 'meta' }, row[col] || '')); continue; }
+        if (Model.isMeta(doc, col) || col === Model.IDENT) { tr.appendChild(el('td', { class: 'meta' }, row[col] || '')); continue; }
         if (Model.isComputed(doc, col)) { const rc = Model.rowCounts(doc, sheet, row); tr.appendChild(el('td', { class: 'meta num' }, fmt(col === '.words' ? rc.words : rc.chars))); continue; }
         const t = el('textarea', { class: 'cell' + (col === doc.mainColumn ? ' main' : ''), 'data-col': col, rows: '1' });
         t.value = row[col] || '';

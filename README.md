@@ -21,7 +21,8 @@ Columns whose names start with a dot belong to SheetWriter. Every other column i
 | `.indent` | Nesting level of a body row: 0, 1, 2 … |
 | `.no` | Hierarchical number, written by the app on save. Used to restore the order if the sheet was sorted in Excel, then recomputed. |
 | `.words`, `.chars` | Per-row counts over the counted columns, written on save and recomputed on load. Switchable off in Settings. |
-| `.updated`, `.author` | Optional, maintained by the app when switched on in Settings. Always the last columns in the file. |
+| `.updated`, `.author` | Optional, maintained by the app when switched on in Settings. Written after the computed columns. |
+| `.id` | Six-character row id, written on save as the last, hidden column. It lets cell colours, fonts, borders and comments added in Excel follow the row through moves, sorts and edits. Rows copied in Excel get a fresh id on the next save. |
 | main text (★) | Your text column, `text` by default; any sheet with it is a chapter. |
 | status (●), target (◎) | Optional roles for two of your columns: coloured chips, and per-section word targets on heading rows. |
 | anything else | Yours: `notes`, `sources`, `examples`… |
@@ -37,7 +38,7 @@ Files written before 0.10 used bare names (`kind`, `no`, …); they load as befo
 
 ### Editing in Excel
 
-Safe: editing text in your own columns (cells are Markdown), adding rows (leave `.no` empty and they go to the end of the chapter, or type a number such as `2.1` to place them), sorting and filtering (`.no` restores the order on load), changing `.kind` and `.indent`, adding or renaming your own columns, adding key/value rows to `.sheetwriter`, adding data sheets. Lost on the next save from SheetWriter: cell colours, fonts, comments and formulas on chapter sheets, and the computed columns, which are rewritten. Breaks the structure: renaming or deleting dotted columns or the text column, duplicate column names, renaming the `.sheetwriter` sheet, merged cells. The same list is written into every workbook.
+Safe: editing text in your own columns (cells are Markdown), adding rows (leave `.no` empty and they go to the end of the chapter, or type a number such as `2.1` to place them), sorting and filtering (`.no` restores the order on load), changing `.kind` and `.indent`, adding or renaming your own columns, adding key/value rows to `.sheetwriter`, adding data sheets. Kept across saves on chapter sheets, following the row by its `.id`: cell fills, borders, comments, font name, colour, underline and strikethrough. Lost on the next save: formulas, number formats, row heights and merged cells on chapter sheets, plus bold, italic and font size, which follow the row kind; and the computed columns, which are rewritten. Breaks the structure: renaming or deleting dotted columns or the text column, duplicate column names, renaming the `.sheetwriter` sheet, merged cells. The same list is written into every workbook.
 
 ## Numbering
 

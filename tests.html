@@ -453,10 +453,12 @@ test('ods: save then load round-trips rows, columns, settings and roles; content
   const { doc: d2, warnings, hasSettings } = await Odf.loadOds(await blob.arrayBuffer());
   eq(warnings, []); eq(hasSettings, true);
   eq(d2.sheets.map(s => [s.name, s.kind]), [['Intro', 'chapter'], ['Body', 'chapter'], ['Data', 'data']]);
-  eq(d2.sheets[0].columns, ['.no', '.kind', '.indent', 'text', 'notes', 'sources', '.words', '.chars', '.updated']);
+  eq(d2.sheets[0].columns, ['.no', '.kind', '.indent', 'text', 'notes', 'sources', '.words', '.chars', '.updated', '.id']);
   eq(d2.sheets[0].rows.map(r => r.text), doc.sheets[0].rows.map(r => r.text));
   eq(d2.sheets[0].rows.map(r => r['.kind']), ['h1', 'p', 's', 'x', 'p', 'p']);
   eq(d2.sheets[0].rows[4]['.indent'], '1'); eq(d2.sheets[0].rows[1].sources, 'Smith 2020');
+  eq(d2.sheets[0].rows.map(r => r['.id']), doc.sheets[0].rows.map(r => r['.id']), 'row ids round-trip through ods');
+  ok(xml.includes('table:visibility="collapse"'), '.id column hidden');
   eq(d2.settings.title, 'Test workbook: draft/1'); eq(d2.settings.roles, { status: 'notes', target: '' }); eq(d2.settings.widths, { text: 700 });
   eq(d2.settings.extra, { custom_key: ['custom value', 'kept by the app'] });
   eq(d2.sheets[2].cells, [['id', 'ref'], ['1', 'Smith 2020']]);
@@ -504,7 +506,7 @@ test('xlsx: save then load preserves rows, columns, settings, order; meta column
   const { doc: d2, warnings } = await XlsxIO.load(buf);
   eq(warnings, []);
   eq(d2.sheets.map(s => s.name), ['Intro', 'Body']);
-  eq(d2.sheets[0].columns, ['.no', '.kind', '.indent', 'text', 'notes', 'sources', '.words', '.chars', '.updated'], 'computed counts before meta columns');
+  eq(d2.sheets[0].columns, ['.no', '.kind', '.indent', 'text', 'notes', 'sources', '.words', '.chars', '.updated', '.id'], 'computed counts before meta columns, id last');
   eq(d2.sheets[0].rows.map(r => r.text), doc.sheets[0].rows.map(r => r.text));
   eq(d2.sheets[0].rows.map(r => r['.kind']), ['h1', 'p', 's', 'x', 'p', 'p']);
   eq(d2.sheets[0].rows[4]['.indent'], '1');
@@ -563,7 +565,7 @@ test('xlsx: Excel-edited chapter: sorted by another column, new rows without no/
 test('xlsx: Excel instructions mention every system column and are not read back as settings; headers protected', async () => {
   const doc = sampleDoc();
   const notes = XlsxIO.excelNotes(doc).join('\n');
-  for (const c of [...Model.RESERVED, ...Model.META, ...Model.COMPUTED]) ok(notes.includes(c), 'notes mention ' + c);
+  for (const c of [...Model.RESERVED, ...Model.META, ...Model.COMPUTED, Model.IDENT]) ok(notes.includes(c), 'notes mention ' + c);
   ok(notes.includes(APP.version), 'notes carry the version');
   const buf = await XlsxIO.save(doc, new Map());
   const { doc: d2 } = await XlsxIO.load(buf);
@@ -580,6 +582,45 @@ test('xlsx: Excel instructions mention every system column and are not read back
   const wb3 = new ExcelJS.Workbook(); await wb3.xlsx.load(await XlsxIO.save(doc, new Map()));
   ok(!(wb3.getWorksheet('Intro').sheetProtection && wb3.getWorksheet('Intro').sheetProtection.sheet), 'protection off by setting');
 });
+test('xlsx: row ids: hidden column, kept across moves, fresh for copies; Excel colours, fonts, borders and comments follow the row', async () => {
+  const doc = sampleDoc();
+  const buf = await XlsxIO.save(doc, new Map());
+  const ids = doc.sheets[0].rows.map(r => r['.id']);
+  ok(ids.every(id => /^[a-z0-9]{6}$/.test(id)) && new Set(ids).size === ids.length, 'ids assigned on save: ' + ids.join(','));
+  const wb = new ExcelJS.Workbook(); await wb.xlsx.load(buf);
+  const ws = wb.getWorksheet('Intro');
+  const hdr = []; ws.getRow(1).eachCell(c => hdr.push(XlsxIO.cellText(c.value)));
+  const idCol = hdr.length; eq(hdr[idCol - 1], '.id', 'id is the last column'); ok(ws.getColumn(idCol).hidden, 'and hidden');
+  const mk = (text, id) => { const a = new Array(idCol).fill(''); a[1] = 'p'; a[3] = text; a[idCol - 1] = id; return a; };
+  // What a person does in Excel: colour the second row, comment on its notes cell, change a font, add a border, copy a row (same id), add a row without id.
+  for (const a of ['D3', 'E3', 'F3']) ws.getCell(a).style = JSON.parse(JSON.stringify(ws.getCell(a).style || {})); // ExcelJS shares loaded style objects; Excel does not
+  ws.getCell('D3').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } };
+  ws.getCell('D3').font = { name: 'Arial', bold: true, color: { argb: 'FFFF0000' } };
+  ws.getCell('E3').note = 'Check this claim';
+  ws.getCell('F3').border = { bottom: { style: 'thin' } };
+  ws.addRow(mk('Copied row', ids[1]));
+  ws.addRow(mk('Row from Excel', ''));
+  const { doc: d2, formats } = await XlsxIO.load(await wb.xlsx.writeBuffer());
+  eq(d2.sheets[0].rows.map(r => r.text).slice(-2), ['Copied row', 'Row from Excel']);
+  eq(d2.sheets[0].rows.slice(-2).map(r => r['.id']), ['', ''], 'the copy lost its duplicate id at load; the original keeps it');
+  eq([...formats.keys()], [ids[1]], 'one row carries formatting');
+  eq(Object.keys(formats.get(ids[1]).cells).sort(), ['notes', 'sources', 'text']);
+  eq(formats.get(ids[1]).cells.text.font, { name: 'Arial', color: { argb: 'FFFF0000' } }, 'bold is the app’s, not kept');
+  // Move the coloured row to the end and promote it, then save: the colour, comment and border move with it; copies and new rows get ids.
+  Model.moveRows(d2, 0, [1], d2.sheets[0].rows.length); d2.sheets[0].rows[d2.sheets[0].rows.length - 1]['.kind'] = 'h2';
+  const buf2 = await XlsxIO.save(d2, new Map(), formats);
+  const ids2 = d2.sheets[0].rows.map(r => r['.id']);
+  eq(new Set(ids2).size, ids2.length, 'copied row got a fresh id'); ok(ids2.every(Boolean), 'new row got an id');
+  const wb2 = new ExcelJS.Workbook(); await wb2.xlsx.load(buf2);
+  const w2 = wb2.getWorksheet('Intro'); const last = w2.rowCount;
+  eq(XlsxIO.cellText(w2.getCell(last, 4).value), 'First argument with **bold**.');
+  eq(w2.getCell(last, 4).fill.fgColor.argb, 'FFFFFF00', 'fill followed the row');
+  eq(w2.getCell(last, 4).font.name, 'Arial'); eq(w2.getCell(last, 4).font.color.argb, 'FFFF0000'); ok(w2.getCell(last, 4).font.bold, 'bold from the new kind');
+  eq(w2.getCell(last, 5).note, 'Check this claim'); eq(w2.getCell(last, 6).border.bottom.style, 'thin');
+  ok(!w2.getCell(3, 4).fill || w2.getCell(3, 4).fill.type !== 'pattern' || !w2.getCell(3, 4).fill.fgColor, 'old position has no fill');
+  eq(Model.cloneRows([d2.sheets[0].rows[0]])[0]['.id'], undefined, 'clipboard copies carry no id');
+  const dup = Model.duplicateRow(d2, 0, 0); eq(d2.sheets[0].rows[dup]['.id'], '', 'duplicate has no id until saved');
+});
 test('xlsx: .contents sheet lists headings with internal links and is not loaded back', async () => {
   const doc = sampleDoc();
   const buf = await XlsxIO.save(doc, new Map());
@@ -594,7 +635,7 @@ test('xlsx: .contents sheet lists headings with internal links and is not loaded
   doc.settings.contentsSheet = false;
   const wb2 = new ExcelJS.Workbook(); await wb2.xlsx.load(await XlsxIO.save(doc, new Map()));
   ok(!wb2.getWorksheet('.contents'), 'switched off by setting');
-  eq(Model.defaultView().gridHidden, ['.words', '.chars', '.updated', '.author'], 'computed and meta columns hidden in Grid by default');
+  eq(Model.defaultView().gridHidden, ['.words', '.chars', '.updated', '.author', '.id'], 'computed, meta and id columns hidden in Grid by default');
 });
 test('xlsx: a workbook with the old _sheetwriter sheet is read and rewritten as .sheetwriter', async () => {
   const wb = new ExcelJS.Workbook();

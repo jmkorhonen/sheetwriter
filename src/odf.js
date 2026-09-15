@@ -110,7 +110,7 @@ const Odf = (() => {
       while (used.has(name.toLowerCase())) name = base.slice(0, 28) + ' ' + k++;
       used.add(name.toLowerCase()); sheetNames.set(s, name);
     }
-    const table = (name, cols, rows, prot) => `<table:table table:name="${esc(name)}"${prot ? ' table:protected="true"' : ''}>${cols.map(w => `<table:table-column table:style-name="${colStyle(w)}"/>`).join('')}${rows.map(r => `<table:table-row table:style-name="ro1">${r.map(c => cellXml(c.v, c.s, c.href)).join('')}</table:table-row>`).join('')}</table:table>`;
+    const table = (name, cols, rows, prot) => `<table:table table:name="${esc(name)}"${prot ? ' table:protected="true"' : ''}>${cols.map(w => typeof w === 'object' ? `<table:table-column table:style-name="${colStyle(w.w)}" table:visibility="collapse"/>` : `<table:table-column table:style-name="${colStyle(w)}"/>`).join('')}${rows.map(r => `<table:table-row table:style-name="ro1">${r.map(c => cellXml(c.v, c.s, c.href)).join('')}</table:table-row>`).join('')}</table:table>`;
     for (const s of doc.sheets) {
       const name = sheetNames.get(s);
       if (s.kind !== 'chapter') {
@@ -140,7 +140,7 @@ const Odf = (() => {
           return { v, s: st };
         }));
       });
-      tables.push(table(name, columns.map(c => XlsxIO.widthFor(c, doc)), rows, doc.settings.protectHeaders !== false));
+      tables.push(table(name, columns.map(c => c === Model.IDENT ? { w: XlsxIO.widthFor(c, doc) } : XlsxIO.widthFor(c, doc)), rows, doc.settings.protectHeaders !== false));
     }
     if (doc.settings.contentsSheet !== false) {
       const rows = [['no', 'heading', 'sheet', 'words'].map(v => ({ v, s: 'hdr' }))];
@@ -169,6 +169,7 @@ const Odf = (() => {
     return XML + `<office:document-styles ${NSDECL}><office:styles><style:default-style style:family="table-cell"><style:text-properties style:font-name="Liberation Sans" fo:font-size="10pt"/></style:default-style></office:styles></office:document-styles>`;
   }
   async function saveOds(doc) {
+    Model.ensureRowIds(doc);
     return pack(ODS_MIME, { 'META-INF/manifest.xml': manifest(ODS_MIME), 'content.xml': odsContent(doc), 'styles.xml': odsStyles(), 'meta.xml': metaXml(doc) });
   }
 

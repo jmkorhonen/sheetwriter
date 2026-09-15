@@ -11,7 +11,7 @@
 
   const state = {
     doc: Model.ensureIds(Model.newDoc()), si: 0, view: 'draft', showSide: true,
-    fileHandle: null, fileName: 'untitled.xlsx', sources: new Map(), dirty: false,
+    fileHandle: null, fileName: 'untitled.xlsx', sources: new Map(), formats: new Map(), dirty: false,
     readScope: 'sheet', readNumbering: '', readColumn: null, readIndented: 'paragraphs',
     focus: null, lastFocus: null, readPos: null,
     fileMtime: null, savedAt: null, copyHandle: null, copyName: '', copyAt: null, copyNeedsPermission: false,
@@ -1124,7 +1124,7 @@
   /** Build the workbook in the format the file name asks for. */
   async function buildWorkbook(doc, name) {
     if (isOds(name)) return { blob: await Odf.saveOds(doc), mime: Odf.ODS_MIME };
-    const buf = await XlsxIO.save(doc, state.sources);
+    const buf = await XlsxIO.save(doc, state.sources, state.formats);
     return { blob: new Blob([buf], { type: XlsxIO.MIME }), mime: XlsxIO.MIME };
   }
   async function parseWorkbook(buffer, name) {
@@ -1145,9 +1145,9 @@
   }
   async function loadBuffer(buffer, name, handle, mtime) {
     try {
-      const { doc, sources, warnings, hasSettings } = await parseWorkbook(buffer, name);
+      const { doc, sources, formats, warnings, hasSettings } = await parseWorkbook(buffer, name);
       if (!hasSettings && !doc.settings.title) doc.settings.title = name.replace(/\.(xlsx|ods)$/i, '').replace(/_/g, ' ').trim();
-      loadDoc(doc, name, handle, sources);
+      loadDoc(doc, name, handle, sources, formats);
       state.fileMtime = handle ? (mtime || null) : null;
       state.savedAt = mtime || null; renderStatus();
       if (handle) { addRecent(name, handle); loadCopyHandle(name); }
@@ -1157,8 +1157,8 @@
       alert('Could not read this workbook: ' + (e.message || e));
     }
   }
-  function loadDoc(doc, name, handle, sources) {
-    state.doc = Model.ensureIds(doc); state.fileName = name; state.fileHandle = handle; state.sources = sources || new Map();
+  function loadDoc(doc, name, handle, sources, formats) {
+    state.doc = Model.ensureIds(doc); state.fileName = name; state.fileHandle = handle; state.sources = sources || new Map(); state.formats = formats || new Map();
     state.si = doc.sheets.findIndex(s => s.kind === 'chapter'); if (state.si < 0) state.si = 0;
     state.dirty = false; state.lastFocus = null; state.readPos = null; state.collapsed.clear(); state.editColumn = null; state.editSheet = null;
     state.sel.clear(); state.selAnchor = null;

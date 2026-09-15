@@ -16,6 +16,7 @@ const Model = (() => {
   const RESERVED = ['.no', '.kind', '.indent'];
   const META = ['.updated', '.author'];
   const COMPUTED = ['.words', '.chars']; // per-row counts, written on save like "no", recomputed on load
+  const IDENT = '.id'; // short random row id, written to the file (hidden column) so formatting added in Excel can follow the row
   const KINDS = ['h1', 'h2', 'h3', 'h4', 'p', 's', 'x'];
   const KIND_ORDER = ['h1', 'h2', 'h3', 'h4', 'p', 's']; // promote/demote ladder
   const DEFAULT_COLUMNS = ['.no', '.kind', '.indent', 'text', 'notes', 'sources'];
@@ -35,6 +36,26 @@ const Model = (() => {
     for (const s of doc.sheets) if (s.kind === 'chapter') for (const r of s.rows) if (typeof r._id === 'number' && r._id > max) max = r._id;
     nextId = Math.max(nextId, max + 1);
     for (const s of doc.sheets) if (s.kind === 'chapter') for (const r of s.rows) if (typeof r._id !== 'number') r._id = newId();
+    return doc;
+  }
+  /** Six base-36 characters, unique within the document. */
+  function newRowId(taken) {
+    for (;;) {
+      let id = '';
+      while (id.length < 6) id += Math.floor(Math.random() * 36).toString(36);
+      if (!taken || !taken.has(id)) { if (taken) taken.add(id); return id; }
+    }
+  }
+  /** Give every chapter row a persistent .id (and every chapter sheet the column). Duplicates, which Excel copy-paste
+   *  produces, are replaced from the second occurrence on. Called by the writers, so the ids also sit in the model. */
+  function ensureRowIds(doc) {
+    const taken = new Set();
+    const valid = id => /^[a-z0-9]{1,16}$/.test(id);
+    for (const s of doc.sheets) if (s.kind === 'chapter') {
+      addColumnTo(s, IDENT);
+      for (const r of s.rows) { const id = String(r[IDENT] || '').trim(); if (valid(id) && !taken.has(id)) { taken.add(id); r[IDENT] = id; } else r[IDENT] = ''; }
+    }
+    for (const s of doc.sheets) if (s.kind === 'chapter') for (const r of s.rows) if (!r[IDENT]) r[IDENT] = newRowId(taken);
     return doc;
   }
   function emptyRow(columns, kind = 'p', indent = 0) {
@@ -67,7 +88,7 @@ const Model = (() => {
     return (col === '.updated' && !!doc.settings.trackUpdated) || (col === '.author' && !!doc.settings.trackAuthor);
   }
   function isComputed(doc, col) { return !!doc.settings.trackCounts && COMPUTED.includes(col); }
-  const isSystem = (doc, col) => RESERVED.includes(col) || isMeta(doc, col) || isComputed(doc, col);
+  const isSystem = (doc, col) => RESERVED.includes(col) || col === IDENT || isMeta(doc, col) || isComputed(doc, col);
   /** Mark a row as edited: maintains updated/author when tracking is on. */
   function touch(doc, sheet, row) {
     if (doc.settings.trackUpdated) { if (!sheet.columns.includes('.updated')) addColumnTo(sheet, '.updated'); row['.updated'] = stamp(); }
@@ -172,11 +193,12 @@ const Model = (() => {
     if (col === doc.mainColumn) return 480;
     if (isComputed(doc, col)) return 60;
     if (isMeta(doc, col)) return 130;
+    if (col === IDENT) return 80;
     return 200;
   }
   /** Display state saved with the workbook: which view, sheet and row were open, what the Draft view shows. */
   function defaultView() {
-    return { mode: 'draft', sheet: '', row: 0, toc: 'off', side: true, hidden: [], counts: true, gridHidden: ['.words', '.chars', '.updated', '.author'] };
+    return { mode: 'draft', sheet: '', row: 0, toc: 'off', side: true, hidden: [], counts: true, gridHidden: ['.words', '.chars', '.updated', '.author', '.id'] };
   }
   function newChapter(name, columns = DEFAULT_COLUMNS) {
     const cols = ensureReserved(columns.slice());
@@ -349,7 +371,7 @@ const Model = (() => {
   }
   function duplicateRow(doc, si, i) {
     const s = doc.sheets[si];
-    const r = { ...s.rows[i], _id: newId() };
+    const r = { ...s.rows[i], _id: newId(), [IDENT]: '' };
     s.rows.splice(i + 1, 0, r);
     touch(doc, s, r);
     return i + 1;
@@ -472,7 +494,7 @@ const Model = (() => {
     if (oldName === doc.mainColumn) setMainColumn(doc, newName, oldName);
   }
   function deleteColumn(doc, si, name) {
-    if (RESERVED.includes(name) || name === doc.mainColumn) return;
+    if (RESERVED.includes(name) || name === IDENT || name === doc.mainColumn) return;
     for (const s of chapterSheets(doc)) {
       s.columns = s.columns.filter(c => c !== name);
       s.rows.forEach(r => { delete r[name]; });
@@ -595,7 +617,7 @@ const Model = (() => {
   // ---- multi-row operations (selection clipboard) ----
   /** Plain copies of rows without private fields, safe to keep in a clipboard. */
   function cloneRows(rows) {
-    return rows.map(r => { const c = {}; for (const [k, v] of Object.entries(r)) if (!k.startsWith('_')) c[k] = v; return c; });
+    return rows.map(r => { const c = {}; for (const [k, v] of Object.entries(r)) if (!k.startsWith('_') && k !== IDENT) c[k] = v; return c; });
   }
   function deleteRows(doc, si, idxs) {
     const s = doc.sheets[si];
@@ -612,7 +634,7 @@ const Model = (() => {
     for (const c of needed) addColumn(doc, si, c);
     const made = plain.map(r => {
       const row = emptyRow(s.columns, normKind(r['.kind']), parseInt(r['.indent'], 10) || 0);
-      for (const c of s.columns) if (!RESERVED.includes(c) && r[c] != null) row[c] = String(r[c]);
+      for (const c of s.columns) if (!RESERVED.includes(c) && c !== IDENT && r[c] != null) row[c] = String(r[c]);
       touch(doc, s, row);
       return row;
     });
@@ -672,7 +694,7 @@ const Model = (() => {
   }
 
   return {
-    RESERVED, META, COMPUTED, KINDS, DEFAULT_COLUMNS, normKind, isHeading, indentOf, emptyRow, newChapter, newDoc, ensureIds, newId,
+    RESERVED, META, COMPUTED, IDENT, KINDS, DEFAULT_COLUMNS, normKind, isHeading, indentOf, emptyRow, newChapter, newDoc, ensureIds, newId, ensureRowIds, newRowId,
     detectKindPrefix, detectIndentPrefix, stamp, isMeta, isComputed, isSystem, touch, ensureMetaColumns,
     sectionEnd, sectionEnds, isCollapsible, blockOf, moveBlock, siblingMoveTarget, statusColumn, targetColumn, rowTarget, roleColumn, suggestRole, colorIndex,
     chapterSheets, chapterIndex, numbering, countColumns, rowCounts, sectionCounts, userColumns, sideColumns, rowIsEmpty, tocEntries, headingFor,
