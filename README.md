@@ -7,6 +7,12 @@ A text editor whose document is an Excel or OpenDocument workbook. One argument 
 
 Works best in Edge and Chrome, which can open and save the `.xlsx` in place and keep a Recent list. Firefox and Safari open through a file picker and save by downloading a copy.
 
+![SheetWriter: typing a row in Draft view, indenting it, moving it, then Grid and Read views](docs/img/sheetwriter.gif)
+
+| Draft | Grid | Read |
+|---|---|---|
+| ![Draft view](docs/img/draft.png) | ![Grid view](docs/img/grid.png) | ![Read view](docs/img/read.png) |
+
 ## The idea
 
 Drafting argument by argument in a spreadsheet is useful: you can reorder, annotate and filter. Doing it in Excel is clumsy. SheetWriter is the editor; Excel stays the file format, so you can still open the workbook in Excel, sort it, add columns, colour cells, and hand it to someone who has never heard of this tool.
@@ -34,7 +40,8 @@ Files written before 0.10 used bare names (`kind`, `no`, …); they load as befo
 - Rows added in Excel without a number go to the end of the chapter, as paragraphs.
 - The `.sheetwriter` sheet (named `_sheetwriter` in files from before 0.10.1, which still load) holds title, author, column roles, numbering and tracking settings, dates, and links to the editor, followed by instructions for editing the workbook in Excel: what is safe, what is lost on the next save, what breaks the structure. It is protected against accidental edits (Review → Unprotect Sheet in Excel to change it there). Rows you add to it are kept.
 - A `.contents` sheet, rewritten on every save, lists every heading with its number, section word count and a link to its row, for navigating the workbook in Excel. SheetWriter ignores it on load. A setting switches it off.
-- Chapter sheets are protected too, but only their header row: every cell, row and column stays editable, sortable and filterable in Excel, while renaming or deleting a column needs Unprotect Sheet. A setting switches this off.
+- Verified in Excel 16 (via COM automation): a fill, a font, a border and a comment added on a chapter sheet, plus a row typed below the data, all survived a round trip through SheetWriter and followed their row after it was moved.
+- Chapter sheets are protected too, but only their header row: every cell, row and column stays editable in Excel, rows can be inserted and deleted, and the header drop-downs sort and filter. Renaming or deleting a column needs Unprotect Sheet, and so does Data → Sort with the header row selected (Excel refuses to sort a range that contains locked cells; the drop-downs and a data-only selection work). A setting switches the protection off.
 
 ### Editing in Excel
 
@@ -73,7 +80,7 @@ Press `?` in the toolbar or F1 for the full list.
 - **Grid**: every column as a table, frozen header and number column, drag handles, inline column renaming, drag a header to reorder. Columns are shared by all chapter sheets: adding, renaming, deleting or reordering applies everywhere, and deleting warns if any sheet holds data in the column.
 - **Columns ▾** chooses which side columns and counts the Draft view shows. This display state, with the current view, sheet, row and table of contents, is saved in the workbook and restored when the file is opened again. Click the title in the toolbar to change it.
 - **Read**: the text as flowing prose, with numbering none / headings / all and indented rows as paragraphs or nested lists.
-- **Contents**: a pane listing the headings of this sheet or of all sheets, with numbers and section word counts. Click to jump; the heading you are working under is highlighted. The pane is also an outliner: drag a heading to move its whole section, above or below another heading or onto a sheet name to move it to that sheet; the ◂ ▸ buttons promote or demote a section with its sub-headings; on a focused entry, Alt+↑/↓ moves the section past a sibling and Alt+Shift+←/→ promotes or demotes it.
+- **Contents**: a pane listing the headings of this sheet or of all sheets, with numbers and section word counts. Click to jump; the heading you are working under is highlighted. The pane is also an outliner: drag a heading to move its whole section, above or below another heading or onto a sheet name to move it to that sheet; the ◂ ▸ buttons promote or demote a section with its sub-headings, ⤴ moves it to a new sheet named after the heading; on a focused entry, Alt+↑/↓ moves the section past a sibling and Alt+Shift+←/→ promotes or demotes it.
 - **Import** (toolbar button, or drop a `.md` or `.csv` file on the window): a CSV or TSV table gives one row per line, its `text` column (or the longest column) as the text, `kind` and `indent` honoured, other columns as side columns. For Markdown, headings become h1–h4 rows, paragraphs become rows (or sentences, or lines for files written one sentence per line, which are detected), list items become indented rows, and the side-column blockquotes and comments that Export writes are read back into their columns. Into a new sheet, one sheet per h1, or the current sheet, with a preview first.
 - **Find and replace** (Ctrl+F, Ctrl+H): across all sheets and columns or narrowed down, with match case; F3 steps through matches, Replace all is one undo step.
 - **OpenDocument**: save the workbook as `.ods` (choose the extension in Save as) for LibreOffice, with the same sheets, settings sheet, contents sheet and header protection; `.ods` files open too. Export the text as `.odt` from the Export dialog. Limits: data-sheet formatting is carried through only for `.xlsx`, and `.ods` has no frozen panes.
@@ -81,6 +88,9 @@ Press `?` in the toolbar or F1 for the full list.
 - **Export Word** (Export button or Ctrl+E, then "Download Word"): real heading styles, bold, italic, code and links from the Markdown, indented rows, side columns as small notes. Written by a small built-in OOXML writer, no Word needed.
 - **Safety**: saving warns if the file changed on disk since it was opened; a snapshot is kept in the browser every 5 minutes (Recent ▾ → Recover an autosave…); and Settings can write an autosave copy to a second workbook such as `name_AUTOSAVE.xlsx` at an interval (Edge and Chrome).
 - **Snapshots and compare** (Recent ▾ → Snapshots and compare…): save a named copy of the workbook in the browser, reopen it later, and compare the editor with a snapshot, with the file as last saved, or with another workbook. The comparison lists rows added, removed or changed, with word-level differences and side-column changes, grouped by sheet; click a row to go to it. Rows are matched by their `.id`, then by identical text, then by similar wording.
+- **Sheets**: right-click a tab (or its ▾) to rename, move, delete, or merge a chapter into the previous one. The Contents pane's ⤴ button splits a section off into its own sheet.
+- **Defaults for new rows** (Settings): `column=value` pairs such as `status=todo` filled into the side columns of every row you add or split off, so status chips are used consistently.
+- **Long workbooks**: above 400 rows the Draft and Read views lay out only the blocks near the viewport, so sheets of several thousand rows stay responsive; Grid view renders every cell and takes about a second per thousand rows.
 - **Status and targets**: the column given the status role shows coloured chips on cards and tints Grid cells; the target column's number on a heading row sets a word target for that section, and Settings holds one for the workbook. The Filter button hides rows by text or `column:value` in Draft and Grid.
 - **Formatting keys**: Ctrl+B, Ctrl+I and Ctrl+K wrap the selection in Markdown bold, italic or a link. Pasting rich text from Word or a browser into the import dialog converts it to Markdown.
 - **Appearance**: light, dark or follow the system, in Settings. Read view has a print stylesheet.
@@ -134,7 +144,7 @@ Notes for contributors:
 
 ## Browser support
 
-Edge and Chrome (Chromium 86+): full, including in-place saving and Recent files. Firefox 98+ and Safari 15.4+: editing, import and export work; saving downloads a copy, and Recent files are unavailable because those browsers have no File System Access API. The test suite runs green in Chromium, Firefox and WebKit through Playwright, and CI runs all three. Small screens get a tighter toolbar; touch editing has had no real testing.
+Edge and Chrome (Chromium 86+): full, including in-place saving and Recent files. Firefox 98+ and Safari 15.4+: editing, import and export work; saving downloads a copy, and Recent files are unavailable because those browsers have no File System Access API. The test suite runs green in Chromium, Firefox and WebKit through Playwright, and CI runs all three. On phone-width screens the toolbar tightens, the contents pane floats over the text and closes when an entry is chosen, and cards narrow; checked in an emulated 375 px viewport, not yet on a real phone.
 
 ## License
 

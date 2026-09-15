@@ -24,7 +24,35 @@ const Views = (() => {
     t.style.height = 'auto';
     t.style.height = (t.scrollHeight + 2) + 'px';
   }
-  function autosizeAll(root) { root.querySelectorAll('textarea.cell').forEach(autosize); }
+  /** Batched: all heights reset, then all measured, then all set, so a table of a thousand cells is laid out three times, not thousands. */
+  function autosizeList(ts) {
+    ts = ts.filter(t => t.offsetParent !== null);
+    ts.forEach(t => { t.style.height = 'auto'; });
+    const hs = ts.map(t => t.scrollHeight);
+    ts.forEach((t, k) => { t.style.height = (hs[k] + 2) + 'px'; });
+  }
+  /** On a long Draft sheet (content-visibility: auto) only cards that have been on screen are measured: measuring a skipped card forces its layout. */
+  function autosizeAll(root) {
+    const long = root.querySelector('.cards.long');
+    if (!long) { autosizeList([...root.querySelectorAll('textarea.cell')]); return; }
+    const ts = [];
+    for (const c of long.children) if (sizedCards.has(c)) ts.push(...c.querySelectorAll('textarea.cell'));
+    autosizeList(ts);
+  }
+  const LONG = 400; // rows from which Draft and Read views skip the layout of off-screen blocks
+  let cardObserver = null;
+  const sizedCards = new WeakSet();
+  /** Size the side fields of cards as they come into view (long sheets), or all at once (short ones). */
+  function observeCards(root, list) {
+    if (cardObserver) { cardObserver.disconnect(); cardObserver = null; }
+    if (!list.classList.contains('long') || typeof IntersectionObserver === 'undefined') { autosizeAll(root); return; }
+    cardObserver = new IntersectionObserver(entries => {
+      const ts = [];
+      for (const e of entries) if (e.isIntersecting && !sizedCards.has(e.target)) { sizedCards.add(e.target); ts.push(...e.target.querySelectorAll('textarea.cell')); }
+      if (ts.length) autosizeList(ts);
+    }, { root, rootMargin: '500px 0px' });
+    for (const c of list.children) cardObserver.observe(c);
+  }
 
   const KIND_TITLES = { h1: 'Heading 1', h2: 'Heading 2', h3: 'Heading 3', h4: 'Heading 4', p: 'Paragraph', s: 'Sentence, continues previous paragraph', x: 'Excluded from export' };
   const KIND_LABEL = { h1: 'H1', h2: 'H2', h3: 'H3', h4: 'H4', p: '¶', s: '↳', x: '✕' };
@@ -137,10 +165,18 @@ const Views = (() => {
     const side = ctx.showSide ? Model.sideColumns(doc, sheet).filter(c => !hidden.has(c)) : [];
     const list = el('div', { class: 'cards' + (side.length ? ' has-side' : '') });
     const sections = Model.sectionCounts(doc, sheet);
-    for (const i of visibleIndexes(sheet, ctx.collapsed)) list.appendChild(card(ctx, sheet, sheet.rows[i], i, num, side, sections));
+    const idxs = visibleIndexes(sheet, ctx.collapsed);
+    const long = idxs.length > LONG;
+    if (long) list.classList.add('long');
+    for (const i of idxs) {
+      const c = card(ctx, sheet, sheet.rows[i], i, num, side, sections);
+      // a size estimate for skipped cards keeps the scrollbar honest: ~110 characters per line at the card width
+      if (long) c.style.containIntrinsicSize = 'auto ' + (30 + 23 * Math.max(1, Math.ceil(String(sheet.rows[i][doc.mainColumn] || '').length / 110))) + 'px';
+      list.appendChild(c);
+    }
     if (ctx.rowFilter || ctx.showFilter) root.appendChild(filterBar(ctx));
     root.appendChild(list);
-    autosizeAll(root);
+    observeCards(root, list);
     applyRowFilter(root, ctx);
   }
 
@@ -389,6 +425,7 @@ const Views = (() => {
       else if (b.type === 'side') art.appendChild(el('div', { class: 'rblock rside', 'data-si': b.si, 'data-i': b.i, html: MD.render('> **' + b.label + ':** ' + b.values.map(v => v.replace(/\n/g, ' ')).join('\n> ')) }));
     }
     flushList();
+    if (art.children.length > LONG) art.classList.add('long');
     root.appendChild(art);
   }
 
@@ -420,7 +457,8 @@ const Views = (() => {
         list.appendChild(el('div', { class: 'toc-row', 'data-si': e.si, 'data-i': e.i }, item,
           el('span', { class: 'toc-ops' },
             el('button', { type: 'button', class: 'toc-op', 'data-op': 'promote', 'data-si': e.si, 'data-i': e.i, title: 'Promote this section: h2 → h1, and its sub-headings with it (Alt+Shift+←)' }, '◂'),
-            el('button', { type: 'button', class: 'toc-op', 'data-op': 'demote', 'data-si': e.si, 'data-i': e.i, title: 'Demote this section: h1 → h2, and its sub-headings with it (Alt+Shift+→)' }, '▸'))));
+            el('button', { type: 'button', class: 'toc-op', 'data-op': 'demote', 'data-si': e.si, 'data-i': e.i, title: 'Demote this section: h1 → h2, and its sub-headings with it (Alt+Shift+→)' }, '▸'),
+            el('button', { type: 'button', class: 'toc-op', 'data-op': 'newsheet', 'data-si': e.si, 'data-i': e.i, title: 'Move this section to a new sheet named after the heading' }, '⤴'))));
       }
     }
     if (!any) list.appendChild(el('p', { class: 'muted toc-empty' }, ctx.tocScope === 'all' ? 'No headings yet.' : 'No headings in this sheet yet. Type "# " at the start of a row to make one.'));

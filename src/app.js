@@ -366,6 +366,10 @@
     if (!ok) flashStatus(dir < 0 ? 'Already at h1, or a sub-heading would go above h1.' : 'A heading in this section is already h4.');
     tocFocus(si, i);
   }
+  function tocNewSheet(si, i) {
+    mutate(d => { const at = Model.sectionToNewSheet(d, si, i); state.si = at; state.lastFocus = { i: 0, col: d.mainColumn, caret: 0 }; state.focus = { i: 0, col: d.mainColumn, caret: 'end', block: 'start' }; });
+    tocFocus(state.si, 0);
+  }
   function tocSibling(si, i, dir) {
     const to = Model.siblingMoveTarget(state.doc, si, i, dir);
     if (to == null) return;
@@ -373,9 +377,9 @@
   }
   tocRoot.addEventListener('click', e => {
     const op = e.target.closest('.toc-op');
-    if (op) { tocShift(+op.dataset.si, +op.dataset.i, op.dataset.op === 'promote' ? -1 : 1); return; }
+    if (op) { if (op.dataset.op === 'newsheet') tocNewSheet(+op.dataset.si, +op.dataset.i); else tocShift(+op.dataset.si, +op.dataset.i, op.dataset.op === 'promote' ? -1 : 1); return; }
     const item = e.target.closest('.toc-item');
-    if (item) { goToRow(+item.dataset.si, +item.dataset.i); return; }
+    if (item) { if (window.innerWidth <= 640) { state.ui.lastToc = state.ui.toc; state.ui.toc = 'off'; } goToRow(+item.dataset.si, +item.dataset.i); return; }
     const sh = e.target.closest('.toc-sheet');
     if (sh) { state.si = +sh.dataset.si; state.lastFocus = null; render(); return; }
     if (e.target.closest('#toc-close')) { state.ui.lastToc = state.ui.toc; state.ui.toc = 'off'; render(); }
@@ -1030,12 +1034,18 @@
     const ok = mutate(d => Model.renameSheet(d, si, name));
     if (!ok) alert('A sheet with that name already exists.');
   }
+  function prevChapter(si) { for (let k = si - 1; k >= 0; k--) if (state.doc.sheets[k].kind === 'chapter') return k; return null; }
   function sheetMenu(anchor) {
     const si = state.si, n = state.doc.sheets.length, s = state.doc.sheets[si];
     showMenu(anchor, [
       { label: 'Rename sheet', action: () => { state.editSheet = si; render(); } },
       { label: 'Move left', disabled: si === 0, action: () => { state.si = si - 1; mutate(d => Model.moveSheet(d, si, si - 1)); } },
       { label: 'Move right', disabled: si >= n - 1, action: () => { state.si = si + 1; mutate(d => Model.moveSheet(d, si, si + 1)); } },
+      '-',
+      { label: 'Merge into the previous chapter', disabled: s.kind !== 'chapter' || prevChapter(si) == null, title: 'Append these rows to the previous chapter sheet and remove this sheet', action: () => {
+        const ti = prevChapter(si);
+        if (confirm(`Move the ${s.rows.length} rows of "${s.name}" to the end of "${state.doc.sheets[ti].name}" and remove "${s.name}"? (Undo is available.)`)) mutate(d => { const at = Model.mergeSheetInto(d, si, ti); if (at != null) state.si = at; });
+      } },
       '-',
       { label: 'Delete sheet', action: () => {
         if (confirm(`Delete sheet "${s.name}"${s.kind === 'chapter' ? ` and its ${s.rows.length} rows` : ''}? (Undo is available.)`)) mutate(d => Model.deleteSheet(d, si));
@@ -1737,6 +1747,7 @@
     $('#st-enter').value = prefs.enterMode;
     $('#st-theme').value = prefs.theme || 'auto';
     $('#st-target').value = d.settings.wordTarget || '';
+    $('#st-defaults').value = Model.pairsText(d.settings.rowDefaults);
     $('#st-copy-enabled').checked = !!prefs.autosaveCopy.enabled;
     $('#st-copy-minutes').value = String(prefs.autosaveCopy.minutes || 2);
     $('#st-copy-name').textContent = state.copyHandle ? state.copyName + (state.copyNeedsPermission ? ' (permission needed)' : '') : (hasFS ? 'no file chosen' : 'needs Edge or Chrome');
@@ -1773,6 +1784,7 @@
         numbering: $('#st-numbering').value, freezeColumns: Math.max(0, Math.min(10, parseInt($('#st-freeze').value, 10) || 0)),
         countColumns: countSel.length === 1 && countSel[0] === sel.value ? [] : countSel,
         wordTarget: Math.max(0, parseInt(String($('#st-target').value).replace(/\s/g, ''), 10) || 0),
+        rowDefaults: Model.parsePairs($('#st-defaults').value),
         roles: { status: $('#st-role-status').value, target: $('#st-role-target').value },
         protectHeaders: $('#st-protect').checked, contentsSheet: $('#st-contents').checked,
         trackUpdated: $('#st-track-updated').checked, trackAuthor: $('#st-track-author').checked, trackCounts: $('#st-track-counts').checked };

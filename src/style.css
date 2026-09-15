@@ -351,6 +351,9 @@ table.grid td.status.c4 { background: var(--c4); } table.grid td.status.c5 { bac
   article.read h1, article.read h2, article.read h3 { break-after: avoid; page-break-after: avoid; }
   @page { margin: 2cm; }
 }
+/* Long sheets: off-screen cards and read blocks are not laid out until scrolled near (their sizes are estimated). */
+.cards.long .card { content-visibility: auto; contain-intrinsic-size: auto 64px; }
+article.read.long .rblock { content-visibility: auto; contain-intrinsic-size: auto 48px; }
 /* ---- snapshots and compare ---- */
 .snap-list { max-height: 40vh; overflow: auto; border: 1px solid var(--line); border-radius: 6px; }
 .snap-row { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-bottom: 1px solid var(--line2); font-size: 13px; }
@@ -379,4 +382,11 @@ table.grid td.status.c4 { background: var(--c4); } table.grid td.status.c5 { bac
   #toolbar #btn-recent, #toolbar #btn-saveas, #toolbar #btn-collapse, #toolbar #btn-expand { display: none; }
   #doc-title { max-width: 55vw; }
   #status { font-size: 11px; }
+  /* the contents pane floats over the text instead of squeezing it; it closes when an entry is chosen */
+  #workspace { position: relative; }
+  #toc { position: absolute; left: 0; top: 0; bottom: 0; width: min(86vw, 340px); z-index: 20; box-shadow: 4px 0 16px rgba(0,0,0,.18); }
+  .card { grid-template-columns: 92px 1fr; padding-right: 4px; }
+  .card.with-side { grid-template-columns: 92px 1fr; }
+  .cards { padding: 0 6px; }
+  article.read { padding: 18px 16px; font-size: 16px; }
 }

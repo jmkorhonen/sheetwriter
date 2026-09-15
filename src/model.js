@@ -238,7 +238,7 @@ const Model = (() => {
     return {
       version: 1,
       mainColumn: 'text',
-      settings: { numbering: 'continuous', title: '', author: '', description: '', created: new Date().toISOString(), trackUpdated: false, trackAuthor: false, trackCounts: true, freezeColumns: 1, countColumns: [], widths: {}, wordTarget: 0, roles: { status: '', target: '' }, protectHeaders: true, contentsSheet: true, exportPresets: {}, view: defaultView(), extra: {} },
+      settings: { numbering: 'continuous', title: '', author: '', description: '', created: new Date().toISOString(), trackUpdated: false, trackAuthor: false, trackCounts: true, freezeColumns: 1, countColumns: [], widths: {}, wordTarget: 0, roles: { status: '', target: '' }, protectHeaders: true, contentsSheet: true, exportPresets: {}, rowDefaults: {}, view: defaultView(), extra: {} },
       sheets: [newChapter('Chapter 1')],
     };
   }
@@ -372,10 +372,25 @@ const Model = (() => {
   }
 
   // ---- row mutators (si = sheet index) ----
+  /** "column=value; column=value" ↔ object. Used for row defaults in Settings and in the .sheetwriter sheet. */
+  function parsePairs(text) {
+    const out = {};
+    for (const part of String(text || '').split(';')) { const m = /^\s*([^=]+?)\s*=\s*(.*?)\s*$/.exec(part); if (m && m[1]) out[m[1]] = m[2]; }
+    return out;
+  }
+  function pairsText(obj) { return Object.entries(obj || {}).map(([k, v]) => `${k}=${v}`).join('; '); }
+  /** Fill the side columns of a row the user just created from settings.rowDefaults (never the main or system columns, never over existing text). */
+  function applyRowDefaults(doc, sheet, row) {
+    for (const [c, v] of Object.entries(doc.settings.rowDefaults || {})) {
+      if (c === doc.mainColumn || isSystem(doc, c) || !sheet.columns.includes(c) || String(row[c] || '').trim()) continue;
+      row[c] = v;
+    }
+    return row;
+  }
   function addRow(doc, si, at, kind = 'p', indent = 0) {
     const s = doc.sheets[si];
     at = Math.max(0, Math.min(at, s.rows.length));
-    const r = emptyRow(s.columns, kind, indent);
+    const r = applyRowDefaults(doc, s, emptyRow(s.columns, kind, indent));
     s.rows.splice(at, 0, r);
     touch(doc, s, r);
     return at;
@@ -406,7 +421,7 @@ const Model = (() => {
     const text = row[main] || '';
     const a = text.slice(0, caret), b = text.slice(caret);
     row[main] = a.replace(/\s+$/, '');
-    const nr = emptyRow(s.columns, isHeading(row['.kind']) ? 'p' : row['.kind'], isHeading(row['.kind']) ? 0 : indentOf(row));
+    const nr = applyRowDefaults(doc, s, emptyRow(s.columns, isHeading(row['.kind']) ? 'p' : row['.kind'], isHeading(row['.kind']) ? 0 : indentOf(row)));
     nr[main] = b.replace(/^\s+/, '');
     s.rows.splice(i + 1, 0, nr);
     touch(doc, s, row); touch(doc, s, nr);
@@ -701,6 +716,25 @@ const Model = (() => {
     s.rows.splice(at, 0, ...rows);
     return at;
   }
+  /** The section owned by heading i becomes a new sheet right after si, named after the heading. Returns the new sheet's index. */
+  function sectionToNewSheet(doc, si, i) {
+    const s = doc.sheets[si];
+    const [start, end] = blockOf(s.rows, i);
+    const name = String(s.rows[i][doc.mainColumn] || '').replace(/^#{1,6}[ \t]+/, '').trim().slice(0, 31) || 'Section';
+    const at = addSheet(doc, name, si + 1);
+    const idxs = []; for (let k = start; k < end; k++) idxs.push(k);
+    moveRowsToSheet(doc, si, idxs, at);
+    return at;
+  }
+  /** Append every row of chapter si to chapter ti and delete si. Returns ti's index afterwards, or null. */
+  function mergeSheetInto(doc, si, ti) {
+    const src = doc.sheets[si], dst = doc.sheets[ti];
+    if (!src || !dst || si === ti || src.kind !== 'chapter' || dst.kind !== 'chapter') return null;
+    const idxs = src.rows.map((r, k) => k).filter(k => !rowIsEmpty(doc, src, src.rows[k]));
+    if (idxs.length) moveRowsToSheet(doc, si, idxs, ti);
+    deleteSheet(doc, si);
+    return ti > si ? ti - 1 : ti;
+  }
   /** Move rows (by index) from sheet si to the end (or `at`) of sheet ti. Returns new index of first moved row. */
   function moveRowsToSheet(doc, si, idxs, ti, at) {
     const src = doc.sheets[si], dst = doc.sheets[ti];
@@ -788,7 +822,7 @@ const Model = (() => {
     wordCount, charCount, sheetCounts, docCounts, sheetWords, docWords, safeFileName,
     addRow, deleteRow, moveRow, duplicateRow, splitRow, mergeRow, setCell, setIndent, shiftIndent, cycleKind, shiftKind,
     validColumnName, addColumn, renameColumn, deleteColumn, moveColumn, moveColumnBefore, columnData, syncColumnOrder, setMainColumn, defaultView, columnWidth,
-    addSheet, renameSheet, deleteSheet, moveSheet, moveRowsToSheet, uniqueSheetName, importRows,
+    addSheet, renameSheet, deleteSheet, moveSheet, moveRowsToSheet, uniqueSheetName, importRows, sectionToNewSheet, mergeSheetInto, parsePairs, pairsText, applyRowDefaults,
     cloneRows, deleteRows, insertRows, moveRows, findMatches, replaceMatches, diffDocs, wordDiff, similarity,
   };
 })();

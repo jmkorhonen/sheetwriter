@@ -19,6 +19,7 @@ const XlsxIO = (() => {
     count_columns: 'Columns whose words and characters the status bar counts (empty = the main column)',
     column_widths: 'Grid column widths in pixels, name:px pairs; also used for the Excel column widths',
     word_target: 'Word target for the whole workbook (0 = none); per-section targets go in the target column on heading rows',
+    row_defaults: 'Values given to the side columns of rows added in SheetWriter, as column=value pairs separated by semicolons (e.g. status=todo)',
     protect_headers: 'yes/no: protect the header row of chapter sheets in Excel (data cells stay editable; Review → Unprotect Sheet to rename columns)',
     contents_sheet: 'yes/no: write a .contents sheet listing every heading with a link to it (rewritten on every save, not shown in SheetWriter)',
     status_column: 'Column whose values show as coloured chips (any name; set in Settings → Column roles)',
@@ -74,7 +75,7 @@ const XlsxIO = (() => {
       'SAFE TO DO IN EXCEL:',
       `• Edit any text in your own columns (${main}, notes, sources, …). Cells are Markdown: **bold**, *italic*, [link](https://…).`,
       '• Add rows anywhere. Leave .no empty and they go to the end of the chapter as paragraphs, or type a .no such as 2.1 to place them.',
-      '• Sort or filter rows: the .no column restores the order when the file is opened. Reorder rows by editing .no.',
+      '• Sort or filter rows with the drop-downs in the header row: the .no column restores the order when the file is opened. Reorder rows by editing .no. (Data → Sort with the header row selected is blocked while the header is protected; sort the data rows only, or use the drop-downs.)',
       '• Change .kind (h1, h2, h3, h4, p, s, x) and .indent (0, 1, 2 …).',
       '• Add columns with any name that does not start with a dot or an underscore. Rename your own columns (then reassign roles in SheetWriter Settings if needed).',
       '• Add key/value rows to this sheet: they are kept. Edit the values of the settings rows above.',
@@ -134,6 +135,7 @@ const XlsxIO = (() => {
         case 'freeze_columns': { const n = parseInt(value, 10); doc.settings.freezeColumns = n >= 0 ? Math.min(n, 10) : 1; break; }
         case 'count_columns': doc.settings.countColumns = value.split(/[,;]/).map(s => s.trim()).filter(Boolean); break;
         case 'word_target': { const n = parseInt(value.replace(/\s/g, ''), 10); doc.settings.wordTarget = n > 0 ? n : 0; break; }
+        case 'row_defaults': doc.settings.rowDefaults = Model.parsePairs(value); break;
         case 'status_column': doc.settings.roles.status = value.trim(); break;
         case 'protect_headers': doc.settings.protectHeaders = yes(value); break;
         case 'contents_sheet': doc.settings.contentsSheet = yes(value); break;
@@ -179,6 +181,7 @@ const XlsxIO = (() => {
       ['count_columns', (doc.settings.countColumns || []).join(', ')],
       ['column_widths', Object.entries(doc.settings.widths || {}).map(([k, v]) => `${k}:${v}`).join(', ')],
       ['word_target', String(doc.settings.wordTarget || 0)],
+      ['row_defaults', Model.pairsText(doc.settings.rowDefaults)],
       ['protect_headers', doc.settings.protectHeaders === false ? 'no' : 'yes'],
       ['contents_sheet', doc.settings.contentsSheet === false ? 'no' : 'yes'],
       ['status_column', (doc.settings.roles && doc.settings.roles.status) || ''],
