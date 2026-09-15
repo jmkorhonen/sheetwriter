@@ -47,9 +47,11 @@ def build():
     DOCS.mkdir(exist_ok=True)
     for name in ("index.html", "sheetwriter.html"):
         out = DOCS / name
-        out.write_text(html, encoding="utf-8")
+        with open(out, "w", encoding="utf-8", newline="\n") as f:  # LF on every platform, so CI can diff the build
+            f.write(html)
         print(f"wrote {out} ({out.stat().st_size / 1024:.0f} KB)")
-    (DOCS / "favicon.svg").write_text((SRC / "favicon.svg").read_text(encoding="utf-8"), encoding="utf-8")
+    with open(DOCS / "favicon.svg", "w", encoding="utf-8", newline="\n") as f:
+        f.write((SRC / "favicon.svg").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
