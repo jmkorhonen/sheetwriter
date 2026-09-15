@@ -22,6 +22,7 @@
 <script src="src/exporter.js"></script>
 <script src="vendor/jszip.min.js"></script>
 <script src="src/docx.js"></script>
+<script src="src/odf.js"></script>
 <script src="src/importer.js"></script>
 <script src="src/html2md.js"></script>
 <script src="src/xlsxio.js"></script>
@@ -418,6 +419,63 @@ test('xlsx: Excel hyperlinks become Markdown links', () => {
   eq(XlsxIO.cellText({ text: 'Smith 2020', hyperlink: 'https://doi.org/10.1/x' }), '[Smith 2020](https://doi.org/10.1/x)');
   eq(XlsxIO.cellText({ text: 'https://a.b', hyperlink: 'https://a.b' }), 'https://a.b');
   eq(XlsxIO.cellText({ text: { richText: [{ text: 'Rich' }] }, hyperlink: 'mailto:x@y.z' }), '[Rich](mailto:x@y.z)');
+});
+
+// ---- OpenDocument ----
+const wellFormed = xml => !new DOMParser().parseFromString(xml, 'application/xml').querySelector('parsererror');
+test('odt: package layout, heading outline levels, formatting spans, side notes', async () => {
+  const doc = sampleDoc(); doc.sheets[0].rows[4]['.indent'] = '1';
+  const xml = Odf.odtContent(doc, { scope: 'all', side: { column: 'sources', mode: 'quote' } });
+  ok(wellFormed(xml), 'content.xml well-formed');
+  ok(xml.includes('<text:h text:style-name="Heading_20_1" text:outline-level="1">Why rows</text:h>'), 'h1');
+  ok(xml.includes('<text:h text:style-name="Heading_20_2" text:outline-level="2">Skipped level</text:h>'), 'h2');
+  ok(xml.includes('<text:span text:style-name="T_b">bold</text:span>'), 'bold span');
+  ok(xml.includes('text:style-name="Side_20_Note"') && xml.includes('Smith 2020'), 'side note');
+  ok(xml.includes('text:style-name="P_ind1"') && xml.includes('style:name="P_ind1"'), 'indent style defined and used');
+  ok(!xml.includes('Parked idea'), 'x row omitted');
+  const blob = await Odf.buildOdt(doc, { scope: 'all' });
+  const z = await JSZip.loadAsync(blob);
+  eq(Object.keys(z.files)[0], 'mimetype'); eq(await z.file('mimetype').async('string'), 'application/vnd.oasis.opendocument.text');
+  for (const p of ['META-INF/manifest.xml', 'content.xml', 'styles.xml', 'meta.xml']) ok(wellFormed(await z.file(p).async('string')), p + ' well-formed');
+});
+test('ods: save then load round-trips rows, columns, settings and roles; contents links; protection', async () => {
+  const doc = sampleDoc(); doc.settings.trackUpdated = true; Model.ensureMetaColumns(doc);
+  doc.sheets[0].rows[4]['.indent'] = '1'; doc.settings.roles = { status: 'notes', target: '' }; doc.settings.widths = { text: 700 };
+  doc.sheets.push({ name: 'Data', kind: 'data', cells: [['id', 'ref'], ['1', 'Smith 2020']] });
+  const blob = await Odf.saveOds(doc);
+  const z = await JSZip.loadAsync(blob);
+  eq(Object.keys(z.files)[0], 'mimetype');
+  const xml = await z.file('content.xml').async('string');
+  ok(wellFormed(xml), 'content.xml well-formed');
+  ok(xml.includes('table:name="Intro" table:protected="true"'), 'chapter protected');
+  ok(xml.includes('table:name=".contents"') && xml.includes('xlink:href="#Intro.D2"'), 'contents link');
+  ok(xml.includes('table:name=".sheetwriter"') && xml.includes('HOW TO WORK WITH THIS WORKBOOK'), 'settings and notes');
+  const { doc: d2, warnings, hasSettings } = await Odf.loadOds(await blob.arrayBuffer());
+  eq(warnings, []); eq(hasSettings, true);
+  eq(d2.sheets.map(s => [s.name, s.kind]), [['Intro', 'chapter'], ['Body', 'chapter'], ['Data', 'data']]);
+  eq(d2.sheets[0].columns, ['.no', '.kind', '.indent', 'text', 'notes', 'sources', '.words', '.chars', '.updated']);
+  eq(d2.sheets[0].rows.map(r => r.text), doc.sheets[0].rows.map(r => r.text));
+  eq(d2.sheets[0].rows.map(r => r['.kind']), ['h1', 'p', 's', 'x', 'p', 'p']);
+  eq(d2.sheets[0].rows[4]['.indent'], '1'); eq(d2.sheets[0].rows[1].sources, 'Smith 2020');
+  eq(d2.settings.title, 'Test workbook: draft/1'); eq(d2.settings.roles, { status: 'notes', target: '' }); eq(d2.settings.widths, { text: 700 });
+  eq(d2.settings.extra, { custom_key: ['custom value', 'kept by the app'] });
+  eq(d2.sheets[2].cells, [['id', 'ref'], ['1', 'Smith 2020']]);
+  eq(Model.numbering(d2, 1).numbers, Model.numbering(doc, 1).numbers);
+});
+test('ods: repeated rows and columns, multi-line cells, numbers and links', async () => {
+  const xml = '<?xml version="1.0"?><office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" xmlns:xlink="http://www.w3.org/1999/xlink"><office:body><office:spreadsheet>'
+    + '<table:table table:name="Essay"><table:table-row><table:table-cell office:value-type="string"><text:p>no</text:p></table:table-cell><table:table-cell office:value-type="string"><text:p>text</text:p></table:table-cell><table:table-cell table:number-columns-repeated="2" office:value-type="string"><text:p>x</text:p></table:table-cell><table:table-cell table:number-columns-repeated="1000"/></table:table-row>'
+    + '<table:table-row><table:table-cell office:value-type="float" office:value="1"><text:p>1</text:p></table:table-cell><table:table-cell office:value-type="string"><text:p>Line one</text:p><text:p>Line two</text:p></table:table-cell><table:table-cell office:value-type="string"><text:p><text:a xlink:href="https://a.b">Link</text:a></text:p></table:table-cell><table:table-cell office:value-type="string"><text:p>a<text:s text:c="3"/>b</text:p></table:table-cell></table:table-row>'
+    + '<table:table-row table:number-rows-repeated="2"><table:table-cell office:value-type="string"><text:p>2</text:p></table:table-cell><table:table-cell office:value-type="string"><text:p>Twice</text:p></table:table-cell></table:table-row>'
+    + '<table:table-row table:number-rows-repeated="1048000"><table:table-cell table:number-columns-repeated="1024"/></table:table-row></table:table>'
+    + '</office:spreadsheet></office:body></office:document-content>';
+  const zip = new JSZip(); zip.file('mimetype', Odf.ODS_MIME, { compression: 'STORE' }); zip.file('content.xml', xml);
+  const buf = await zip.generateAsync({ type: 'arraybuffer' });
+  ok(await Odf.looksLikeOds(buf));
+  const { doc } = await Odf.loadOds(buf);
+  eq(doc.sheets[0].columns, ['.kind', '.indent', '.no', 'text', 'x', 'x_2', '.words', '.chars']);
+  eq(doc.sheets[0].rows.map(r => r.text), ['Line one\nLine two', 'Twice', 'Twice']);
+  eq(doc.sheets[0].rows[0].x, '[Link](https://a.b)'); eq(doc.sheets[0].rows[0].x_2, 'a   b');
 });
 
 // ---- markdown ----

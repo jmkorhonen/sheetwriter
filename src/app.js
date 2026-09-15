@@ -1113,7 +1113,21 @@
   function confirmDiscard() { return !state.dirty || confirm('Discard unsaved changes?'); }
 
   // ---------- files ----------
-  const FILE_TYPES = [{ description: 'Excel workbook', accept: { [XlsxIO.MIME]: ['.xlsx'] } }];
+  const FILE_TYPES = [
+    { description: 'Excel workbook', accept: { [XlsxIO.MIME]: ['.xlsx'] } },
+    { description: 'OpenDocument spreadsheet', accept: { [Odf.ODS_MIME]: ['.ods'] } },
+  ];
+  const isOds = name => /\.ods$/i.test(name || '');
+  /** Build the workbook in the format the file name asks for. */
+  async function buildWorkbook(doc, name) {
+    if (isOds(name)) return { blob: await Odf.saveOds(doc), mime: Odf.ODS_MIME };
+    const buf = await XlsxIO.save(doc, state.sources);
+    return { blob: new Blob([buf], { type: XlsxIO.MIME }), mime: XlsxIO.MIME };
+  }
+  async function parseWorkbook(buffer, name) {
+    if (isOds(name) || (!/\.xlsx$/i.test(name || '') && await Odf.looksLikeOds(buffer))) return Odf.loadOds(buffer);
+    return XlsxIO.load(buffer);
+  }
   async function openFile() {
     if (!confirmDiscard()) return;
     if (hasFS) {
@@ -1128,8 +1142,8 @@
   }
   async function loadBuffer(buffer, name, handle, mtime) {
     try {
-      const { doc, sources, warnings, hasSettings } = await XlsxIO.load(buffer);
-      if (!hasSettings && !doc.settings.title) doc.settings.title = name.replace(/\.xlsx$/i, '').replace(/_/g, ' ').trim();
+      const { doc, sources, warnings, hasSettings } = await parseWorkbook(buffer, name);
+      if (!hasSettings && !doc.settings.title) doc.settings.title = name.replace(/\.(xlsx|ods)$/i, '').replace(/_/g, ' ').trim();
       loadDoc(doc, name, handle, sources);
       state.fileMtime = handle ? (mtime || null) : null;
       state.savedAt = mtime || null; renderStatus();
@@ -1158,11 +1172,9 @@
     return (t || 'untitled') + '.xlsx';
   }
   async function saveFile(as) {
-    let buf;
     state.doc.settings.view = currentViewState(); // display state travels with the file; not an undo step
-    try { buf = await XlsxIO.save(state.doc, state.sources); }
-    catch (e) { console.error(e); alert('Could not build the workbook: ' + (e.message || e)); return; }
-    const blob = new Blob([buf], { type: XlsxIO.MIME });
+    let blob;
+    const build = async () => { try { blob = (await buildWorkbook(state.doc, state.fileName)).blob; return true; } catch (e) { console.error(e); alert('Could not build the workbook: ' + (e.message || e)); return false; } };
     try {
       // Guard against overwriting a file that changed on disk since it was opened (edited in Excel, say).
       if (hasFS && state.fileHandle && !as && state.fileMtime) {
@@ -1178,6 +1190,7 @@
         const h = await window.showSaveFilePicker({ suggestedName: suggestedName(), types: FILE_TYPES });
         state.fileHandle = h; state.fileName = h.name;
       }
+      if (!(await build())) return; // the format follows the file name chosen above (.xlsx or .ods)
       if (state.fileHandle) {
         const w = await state.fileHandle.createWritable();
         await w.write(blob); await w.close();
@@ -1186,9 +1199,10 @@
         ensureCopyPermission();
       } else {
         if (as || state.fileName === 'untitled.xlsx') {
-          const n = await askText('File name', suggestedName());
+          const n = await askText('File name (.xlsx or .ods)', suggestedName());
           if (n == null || !n.trim()) return;
-          state.fileName = /\.xlsx$/i.test(n) ? n.trim() : n.trim() + '.xlsx';
+          state.fileName = /\.(xlsx|ods)$/i.test(n) ? n.trim() : n.trim() + '.xlsx';
+          if (!(await build())) return;
         }
         download(blob, state.fileName);
       }
@@ -1198,7 +1212,7 @@
     } catch (e) {
       if (e && (e.name === 'AbortError' || e.name === 'NotAllowedError')) { statusEl.textContent = 'Save cancelled: no permission to write the file. ' + statusEl.textContent; return; }
       console.error(e);
-      if (confirm('Could not save in place: ' + (e.message || e) + '\nDownload a copy instead?')) download(blob, state.fileName);
+      if (blob && confirm('Could not save in place: ' + (e.message || e) + '\nDownload a copy instead?')) download(blob, state.fileName);
     }
   }
   function askConflict(onDisk) {
@@ -1233,8 +1247,8 @@
   async function chooseCopyFile() {
     if (!hasFS) { alert('The autosave copy needs Edge or Chrome (direct file access).'); return; }
     try {
-      const base = (state.fileName || 'untitled.xlsx').replace(/\.xlsx$/i, '');
-      const h = await window.showSaveFilePicker({ suggestedName: base + '_AUTOSAVE.xlsx', types: FILE_TYPES });
+      const base = (state.fileName || 'untitled.xlsx').replace(/\.(xlsx|ods)$/i, '');
+      const h = await window.showSaveFilePicker({ suggestedName: base + '_AUTOSAVE' + (isOds(state.fileName) ? '.ods' : '.xlsx'), types: FILE_TYPES });
       state.copyHandle = h; state.copyName = h.name; state.copyNeedsPermission = false; lastCopySnap = '';
       const map = (await idb.get(COPY_KEY)) || {};
       map[state.fileName] = { handle: h, name: h.name };
@@ -1259,9 +1273,9 @@
       const p = await state.copyHandle.queryPermission({ mode: 'readwrite' });
       if (p !== 'granted') { state.copyNeedsPermission = true; renderStatus(); return; }
       const d = JSON.parse(snap); d.settings.view = currentViewState();
-      const buf = await XlsxIO.save(d, state.sources);
+      const { blob } = await buildWorkbook(d, state.copyName);
       const w = await state.copyHandle.createWritable();
-      await w.write(new Blob([buf], { type: XlsxIO.MIME })); await w.close();
+      await w.write(blob); await w.close();
       lastCopyAt = Date.now(); lastCopySnap = snap; state.copyAt = lastCopyAt;
       renderStatus();
     } catch (e) { console.warn('autosave copy failed', e); }
@@ -1354,7 +1368,7 @@
       catch (e) { $('#ex-preview').select(); document.execCommand('copy'); }
     };
     const exportName = ext => {
-      const base = suggestedName().replace(/\.xlsx$/i, '');
+      const base = suggestedName().replace(/\.(xlsx|ods)$/i, '');
       const col = $('#ex-column').value;
       return (col === state.doc.mainColumn ? base : `${base}-${col}`) + (scopeSel.value === 'all' ? '' : '-' + sheet().name.replace(/[^\w\-]+/g, '_')) + ext;
     };
@@ -1368,6 +1382,12 @@
       const b = $('#ex-docx'); b.disabled = true;
       try { download(await Docx.build(state.doc, exportOpts()), exportName('.docx')); }
       catch (e) { console.error(e); alert('Could not build the Word file: ' + (e.message || e)); }
+      finally { b.disabled = false; }
+    };
+    $('#ex-odt').onclick = async () => {
+      const b = $('#ex-odt'); b.disabled = true;
+      try { download(await Odf.buildOdt(state.doc, exportOpts()), exportName('.odt')); }
+      catch (e) { console.error(e); alert('Could not build the OpenDocument file: ' + (e.message || e)); }
       finally { b.disabled = false; }
     };
     update();
@@ -1493,7 +1513,7 @@
     if (![...e.dataTransfer.types].includes('Files')) return;
     e.preventDefault();
     const files = [...e.dataTransfer.files];
-    const x = files.find(f => /\.xlsx$/i.test(f.name));
+    const x = files.find(f => /\.(xlsx|ods)$/i.test(f.name));
     if (x) { if (!confirmDiscard()) return; await loadBuffer(await x.arrayBuffer(), x.name, null); return; }
     const mds = files.filter(f => /\.(md|markdown|txt)$/i.test(f.name));
     if (mds.length) await importFromFiles(mds);
@@ -1629,5 +1649,5 @@
   // ---------- boot ----------
   render();
   offerRestore();
-  window.SheetWriter = { state, render, prefs, Model, XlsxIO, Exporter, Importer, APP, openImport, currentViewState, applyViewState, loadDoc };
+  window.SheetWriter = { state, render, prefs, Model, XlsxIO, Odf, Exporter, Importer, APP, openImport, currentViewState, applyViewState, loadDoc };
 })();

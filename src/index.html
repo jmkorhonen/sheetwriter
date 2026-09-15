@@ -12,7 +12,7 @@
 <header id="toolbar">
   <div class="group">
     <button id="btn-new" title="New workbook">New</button>
-    <button id="btn-open" title="Open an .xlsx workbook (Ctrl+O)">Open</button>
+    <button id="btn-open" title="Open an .xlsx or .ods workbook (Ctrl+O)">Open</button>
     <button id="btn-recent" title="Recently opened or saved files">Recent ▾</button>
     <button id="btn-save" title="Save (Ctrl+S)">Save</button>
     <button id="btn-saveas" title="Save as… (Ctrl+Shift+S)">Save as</button>
@@ -78,7 +78,7 @@
 
 <dialog id="dlg-export">
   <form method="dialog" class="dlg">
-    <h2>Export: Markdown or Word</h2>
+    <h2>Export: Markdown, Word or OpenDocument</h2>
     <div class="fields">
       <label>Column to export <select id="ex-column"></select></label>
       <label>Scope <select id="ex-scope"><option value="sheet">This chapter</option><option value="all">Whole workbook</option></select></label>
@@ -94,6 +94,7 @@
       <button type="button" id="ex-copy">Copy</button>
       <button type="button" id="ex-download" class="primary">Download Markdown (.md)</button>
       <button type="button" id="ex-docx" class="primary" title="Word document with heading styles, formatting from the Markdown, indented rows and side notes">Download Word (.docx)</button>
+      <button type="button" id="ex-odt" class="primary" title="OpenDocument text (LibreOffice) with the same content and styles">Download OpenDocument (.odt)</button>
       <button type="button" data-close>Close</button>
     </div>
   </form>
@@ -230,7 +231,7 @@
       <tr><td>Ctrl+S / Ctrl+Shift+S</td><td>Save / Save as</td></tr>
       <tr><td>Ctrl+O</td><td>Open</td></tr>
       <tr><td>Ctrl+Z / Ctrl+Y</td><td>Undo / redo</td></tr>
-      <tr><td>Ctrl+E</td><td>Export dialog: Markdown (.md) or Word (.docx), with the same options</td></tr>
+      <tr><td>Ctrl+E</td><td>Export dialog: Markdown (.md), Word (.docx) or OpenDocument text (.odt), with the same options</td></tr>
       <tr><td>Ctrl+F / Ctrl+H</td><td>Find / find and replace across the workbook; F3 and Shift+F3 step through matches</td></tr>
       <tr><td>Ctrl+PageUp / PageDown</td><td>Previous / next sheet</td></tr>
     </table>
@@ -245,12 +246,13 @@
     <h3>Files</h3>
     <p>Saving checks whether the file changed on disk since it was opened (edited in Excel, say) and asks before overwriting. An autosave snapshot is kept in the browser every 5 minutes (Recent ▾ → Recover an autosave…), and Settings can add an autosave copy written to a second workbook, such as <code>name_AUTOSAVE.xlsx</code>, at an interval of your choice. Excel hyperlinks are read as Markdown links. In Read view, click any paragraph or heading to edit it.</p>
     <p>Editing in Excel: the <code>.sheetwriter</code> sheet ends with instructions on what is safe (text, rows, sorting, <code>.kind</code>, <code>.indent</code>, your own columns), what is lost on the next save (cell colours, comments, formulas on chapter sheets) and what breaks the structure (renaming dotted columns or the text column, merged cells). Chapter sheets have only their header row protected; everything else is editable, and Review → Unprotect Sheet lifts it.</p>
+    <p>Formats: the workbook is saved as <code>.xlsx</code> or, when the file name ends in <code>.ods</code>, as an OpenDocument spreadsheet for LibreOffice, with the same sheets, settings and contents. Both open. Formatting of data sheets is only carried through for <code>.xlsx</code>, and <code>.ods</code> files have no frozen panes.</p>
     <p>In Edge and Chrome the app opens and saves the .xlsx in place and keeps a Recent list. In Firefox and Safari, Open uses a file picker and Save downloads a copy. Unsaved work is also kept in the browser and offered back on the next start. Sheets without a main text column are data sheets: shown read-only, written back unchanged. A workbook edited or sorted in Excel is put back in <code>no</code> order on load; rows without a number go last. A plain spreadsheet without a <code>text</code> column is imported using its longest text column.</p>
     <div class="actions"><button type="button" data-close class="primary">Close</button></div>
   </form>
 </dialog>
 
-<input type="file" id="file-input" accept=".xlsx" hidden>
+<input type="file" id="file-input" accept=".xlsx,.ods" hidden>
 <input type="file" id="md-input" accept=".md,.markdown,.txt,text/markdown,text/plain" multiple hidden>
 
 <script src="timers.js"></script>
@@ -263,6 +265,7 @@
 <script src="exporter.js"></script>
 <script src="../vendor/jszip.min.js"></script>
 <script src="docx.js"></script>
+<script src="odf.js"></script>
 <script src="importer.js"></script>
 <script src="html2md.js"></script>
 <script src="xlsxio.js"></script>

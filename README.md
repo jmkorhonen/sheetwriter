@@ -1,6 +1,6 @@
 # SheetWriter
 
-A text editor whose document is an Excel workbook. One argument per row, extra columns for notes, sources and examples, one sheet per chapter, hierarchical numbering that follows headings and indentation. Cells are Markdown. Nothing to install: the whole app is one HTML file.
+A text editor whose document is an Excel or OpenDocument workbook. One argument per row, extra columns for notes, sources and examples, one sheet per chapter, hierarchical numbering that follows headings and indentation. Cells are Markdown. Nothing to install: the whole app is one HTML file.
 
 **Use it online:** https://jmkorhonen.github.io/sheetwriter/
 **Download the single file:** https://jmkorhonen.github.io/sheetwriter/sheetwriter.html (right-click, Save link as… or use Settings → Download latest version inside the app)
@@ -74,6 +74,7 @@ Press `?` in the toolbar or F1 for the full list.
 - **Contents**: a pane listing the headings of this sheet or of all sheets, with numbers and section word counts. Click to jump; the heading you are working under is highlighted.
 - **Import** (toolbar button, or drop a `.md` file on the window): headings become h1–h4 rows, paragraphs become rows (or sentences, or lines for files written one sentence per line, which are detected), list items become indented rows, and the side-column blockquotes and comments that Export writes are read back into their columns. Into a new sheet, one sheet per h1, or the current sheet, with a preview first.
 - **Find and replace** (Ctrl+F, Ctrl+H): across all sheets and columns or narrowed down, with match case; F3 steps through matches, Replace all is one undo step.
+- **OpenDocument**: save the workbook as `.ods` (choose the extension in Save as) for LibreOffice, with the same sheets, settings sheet, contents sheet and header protection; `.ods` files open too. Export the text as `.odt` from the Export dialog. Limits: data-sheet formatting is carried through only for `.xlsx`, and `.ods` has no frozen panes.
 - **Export Word** (Export button or Ctrl+E, then "Download Word"): real heading styles, bold, italic, code and links from the Markdown, indented rows, side columns as small notes. Written by a small built-in OOXML writer, no Word needed.
 - **Safety**: saving warns if the file changed on disk since it was opened; a snapshot is kept in the browser every 5 minutes (Recent ▾ → Recover an autosave…); and Settings can write an autosave copy to a second workbook such as `name_AUTOSAVE.xlsx` at an interval (Edge and Chrome).
 - **Status and targets**: the column given the status role shows coloured chips on cards and tints Grid cells; the target column's number on a heading row sets a word target for that section, and Settings holds one for the workbook. The Filter button hides rows by text or `column:value` in Draft and Grid.

@@ -144,13 +144,8 @@ const XlsxIO = (() => {
     doc.settings.extra = extra;
   }
 
-  async function writeSettings(wb, doc) {
-    const ws = wb.addWorksheet(SETTINGS_SHEET);
-    ws.columns = [
-      { header: 'key', key: 'key', width: 16 },
-      { header: 'value', key: 'value', width: 56 },
-      { header: 'description', key: 'description', width: 70 },
-    ];
+  /** Rows of the settings sheet, format-neutral: [{key, value, desc, link, bold, note}]. Shared by the XLSX and ODS writers. */
+  function settingsRows(doc) {
     const now = new Date().toISOString();
     const view = Object.assign(Model.defaultView(), doc.settings.view || {});
     const rows = [
@@ -186,20 +181,27 @@ const XlsxIO = (() => {
       ['repo', APP.repo],
       ['readme', APP.readme],
     ];
-    for (const r of rows) {
-      const row = ws.addRow([r[0], r[1], KNOWN[r[0]] || '']);
-      if (LINK_KEYS.includes(r[0])) row.getCell(2).value = { text: r[1], hyperlink: r[1] };
+    const out = rows.map(r => ({ key: r[0], value: r[1], desc: KNOWN[r[0]] || '', link: LINK_KEYS.includes(r[0]) }));
+    for (const [k, v] of Object.entries(doc.settings.extra || {})) out.push({ key: k, value: v[0] || '', desc: v[1] || '' });
+    out.push({ key: '', value: '', desc: '', note: true });
+    excelNotes(doc).forEach((line, k) => out.push({ key: '', value: line, desc: '', note: true, bold: k === 0 || /^[A-Z ]+:$/.test(line) }));
+    return out;
+  }
+
+  async function writeSettings(wb, doc) {
+    const ws = wb.addWorksheet(SETTINGS_SHEET);
+    ws.columns = [
+      { header: 'key', key: 'key', width: 16 },
+      { header: 'value', key: 'value', width: 56 },
+      { header: 'description', key: 'description', width: 70 },
+    ];
+    for (const r of settingsRows(doc)) {
+      const row = ws.addRow([r.key, r.value, r.desc]);
+      if (r.link) { row.getCell(2).value = { text: r.value, hyperlink: r.value }; row.getCell(2).font = { color: { argb: 'FF2F6FDB' }, underline: true }; }
+      if (r.bold) row.getCell(2).font = { bold: true };
     }
-    for (const [k, v] of Object.entries(doc.settings.extra || {})) ws.addRow([k, v[0] || '', v[1] || '']);
-    ws.addRow([]);
-    excelNotes(doc).forEach((line, k) => {
-      const row = ws.addRow(['', line, '']);
-      if (k === 0 || /^[A-Z ]+:$/.test(line)) row.getCell(2).font = { bold: true };
-    });
     ws.getRow(1).font = { bold: true };
     ws.eachRow(row => row.eachCell(c => { c.alignment = { wrapText: true, vertical: 'top' }; }));
-    LINK_KEYS.forEach(() => {});
-    ws.eachRow((row, n) => { if (n > 1 && LINK_KEYS.includes(cellText(row.getCell(1).value))) row.getCell(2).font = { color: { argb: 'FF2F6FDB' }, underline: true }; });
     // Protect against accidental edits in Excel. No password: "Unprotect Sheet" in Excel is one click.
     try { await ws.protect('', { selectLockedCells: true, selectUnlockedCells: true }); } catch (e) { /* optional */ }
   }
@@ -281,16 +283,22 @@ const XlsxIO = (() => {
   async function load(buffer) {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(buffer);
+    return loadFromSheets(orderedSheets(wb), name => wb.getWorksheet(name));
+  }
+  /** Build a document from worksheet-like objects ({name, rowCount, columnCount, getRow(r).getCell(c).value}),
+   *  in workbook order. Used for XLSX (ExcelJS worksheets) and ODS (adapters). Only ExcelJS sheets can be
+   *  copied through with formatting; others fall back to their cell values. */
+  function loadFromSheets(allSheets, getWorksheet) {
     const doc = Model.newDoc();
     doc.sheets = [];
     const sources = new Map();
     const warnings = [];
 
-    const sws = wb.getWorksheet(SETTINGS_SHEET) || wb.getWorksheet(LEGACY_SETTINGS_SHEET);
+    const sws = getWorksheet(SETTINGS_SHEET) || getWorksheet(LEGACY_SETTINGS_SHEET);
     if (sws) readSettings(sws, doc);
     let mainCased = !!sws; // without a settings sheet, adopt the casing used in the file
     // Sheets whose names start with a dot are SheetWriter's own (.sheetwriter, .contents) and are regenerated on save.
-    const sheets = orderedSheets(wb).filter(ws => !ws.name.startsWith('.') && ws.name !== LEGACY_SETTINGS_SHEET);
+    const sheets = allSheets.filter(ws => !ws.name.startsWith('.') && ws.name !== LEGACY_SETTINGS_SHEET);
 
     for (const ws of sheets) {
       const headers = readHeaders(ws);
@@ -308,7 +316,7 @@ const XlsxIO = (() => {
           cells.push(arr);
         }
         doc.sheets.push({ name: ws.name, kind: 'data', cells });
-        sources.set(ws.name, ws);
+        if (typeof ws.eachRow === 'function') sources.set(ws.name, ws);
       }
     }
 
@@ -452,6 +460,23 @@ const XlsxIO = (() => {
   }
 
   const colLetter = n => { let s = ''; for (let x = n; x > 0; x = Math.floor((x - 1) / 26)) s = String.fromCharCode(65 + ((x - 1) % 26)) + s; return s; };
+  /** Entries of the ".contents" sheet, format-neutral: [{no, heading, sheet, words, level, col (letter), row (1-based file row) | null}]. */
+  function contentsEntries(doc, sheetNames) {
+    const out = [];
+    for (const g of Model.tocEntries(doc, null)) {
+      const s = doc.sheets[g.si];
+      const cols = fileColumns(doc, s);
+      const col = colLetter(cols.indexOf(doc.mainColumn) + 1);
+      const fileName = sheetNames.get(s) || s.name;
+      // Row numbers in the file: header + rows that are actually written (empty rows are skipped).
+      const written = s.rows.filter(r => !Model.rowIsEmpty(doc, s, r));
+      for (const e of g.entries) {
+        const idx = written.indexOf(s.rows[e.i]);
+        out.push({ no: e.number, heading: e.text, sheet: fileName, words: e.words, level: e.level, col, row: idx >= 0 ? idx + 2 : null });
+      }
+    }
+    return out;
+  }
   /** A ".contents" sheet: every heading with its number, section words, and an internal link to the row. */
   async function writeContents(wb, doc, sheetNames) {
     const ws = wb.addWorksheet('.contents');
@@ -459,25 +484,16 @@ const XlsxIO = (() => {
       { header: 'no', key: 'no', width: 10 }, { header: 'heading', key: 'heading', width: 70 },
       { header: 'sheet', key: 'sheet', width: 24 }, { header: 'words', key: 'words', width: 9 },
     ];
-    for (const g of Model.tocEntries(doc, null)) {
-      const s = doc.sheets[g.si];
-      const cols = fileColumns(doc, s);
-      const mainCol = colLetter(cols.indexOf(doc.mainColumn) + 1);
-      const fileName = sheetNames.get(s) || s.name;
-      // Row numbers in the file: header + rows that are actually written (empty rows are skipped).
-      const written = s.rows.filter(r => !Model.rowIsEmpty(doc, s, r));
-      for (const e of g.entries) {
-        const idx = written.indexOf(s.rows[e.i]);
-        const row = ws.addRow({ no: e.number, heading: e.text, sheet: fileName, words: e.words });
-        if (idx >= 0) row.getCell('heading').value = { text: e.text, hyperlink: `#'${fileName.replace(/'/g, "''")}'!${mainCol}${idx + 2}` };
-        row.getCell('heading').alignment = { indent: Math.max(0, e.level - 1) };
-        row.getCell('heading').font = { bold: e.level === 1, color: { argb: 'FF2F6FDB' }, underline: true };
-      }
+    for (const e of contentsEntries(doc, sheetNames)) {
+      const row = ws.addRow({ no: e.no, heading: e.heading, sheet: e.sheet, words: e.words });
+      if (e.row) row.getCell('heading').value = { text: e.heading, hyperlink: `#'${e.sheet.replace(/'/g, "''")}'!${e.col}${e.row}` };
+      row.getCell('heading').alignment = { indent: Math.max(0, e.level - 1) };
+      row.getCell('heading').font = { bold: e.level === 1, color: { argb: 'FF2F6FDB' }, underline: true };
     }
     ws.getRow(1).font = { bold: true };
     ws.views = [{ state: 'frozen', ySplit: 1 }];
     try { await ws.protect('', { selectLockedCells: true, selectUnlockedCells: true }); } catch (e) { /* optional */ }
   }
 
-  return { load, save, cellText, sortByNo, excelNotes, SETTINGS_SHEET, MIME };
+  return { load, loadFromSheets, save, cellText, sortByNo, excelNotes, settingsRows, contentsEntries, fileColumns, widthFor, safeSheetName, colLetter, SETTINGS_SHEET, MIME };
 })();
