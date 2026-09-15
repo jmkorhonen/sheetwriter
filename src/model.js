@@ -192,7 +192,7 @@ const Model = (() => {
     return {
       version: 1,
       mainColumn: 'text',
-      settings: { numbering: 'continuous', title: '', author: '', description: '', created: new Date().toISOString(), trackUpdated: false, trackAuthor: false, trackCounts: true, freezeColumns: 1, countColumns: [], widths: {}, wordTarget: 0, roles: { status: '', target: '' }, view: defaultView(), extra: {} },
+      settings: { numbering: 'continuous', title: '', author: '', description: '', created: new Date().toISOString(), trackUpdated: false, trackAuthor: false, trackCounts: true, freezeColumns: 1, countColumns: [], widths: {}, wordTarget: 0, roles: { status: '', target: '' }, protectHeaders: true, view: defaultView(), extra: {} },
       sheets: [newChapter('Chapter 1')],
     };
   }

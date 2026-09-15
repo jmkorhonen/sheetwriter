@@ -1509,6 +1509,7 @@
     $('#st-track-updated').checked = !!d.settings.trackUpdated;
     $('#st-track-author').checked = !!d.settings.trackAuthor;
     $('#st-track-counts').checked = !!d.settings.trackCounts;
+    $('#st-protect').checked = d.settings.protectHeaders !== false;
     $('#st-enter').value = prefs.enterMode;
     $('#st-theme').value = prefs.theme || 'auto';
     $('#st-target').value = d.settings.wordTarget || '';
@@ -1549,6 +1550,7 @@
         countColumns: countSel.length === 1 && countSel[0] === sel.value ? [] : countSel,
         wordTarget: Math.max(0, parseInt(String($('#st-target').value).replace(/\s/g, ''), 10) || 0),
         roles: { status: $('#st-role-status').value, target: $('#st-role-target').value },
+        protectHeaders: $('#st-protect').checked,
         trackUpdated: $('#st-track-updated').checked, trackAuthor: $('#st-track-author').checked, trackCounts: $('#st-track-counts').checked };
       const main = sel.value;
       prefs.enterMode = $('#st-enter').value; prefs.indentTrigger = indSel.value; prefs.theme = $('#st-theme').value; applyTheme();

@@ -502,6 +502,26 @@ test('xlsx: Excel-edited chapter: sorted by another column, new rows without no/
   const { doc: d3 } = await XlsxIO.load(buf2);
   eq(d3.sheets[0].rows.map(r => r.Text), ['Title row', 'First', 'Second', 'rich text', 'Added in Excel']);
 });
+test('xlsx: Excel instructions mention every system column and are not read back as settings; headers protected', async () => {
+  const doc = sampleDoc();
+  const notes = XlsxIO.excelNotes(doc).join('\n');
+  for (const c of [...Model.RESERVED, ...Model.META, ...Model.COMPUTED]) ok(notes.includes(c), 'notes mention ' + c);
+  ok(notes.includes(APP.version), 'notes carry the version');
+  const buf = await XlsxIO.save(doc, new Map());
+  const { doc: d2 } = await XlsxIO.load(buf);
+  eq(Object.keys(d2.settings.extra), ['custom_key'], 'instruction rows are not settings');
+  const wb = new ExcelJS.Workbook(); await wb.xlsx.load(buf);
+  const st = wb.getWorksheet('.sheetwriter'); let found = false; st.eachRow(r => { if (String(r.getCell(2).value || '').startsWith('HOW TO WORK')) found = true; }); ok(found, 'instructions present');
+  const ws = wb.getWorksheet('Intro');
+  ok(ws.sheetProtection && ws.sheetProtection.sheet, 'chapter sheet protected');
+  ok(ws.sheetProtection.insertRows === true && ws.sheetProtection.sort === true && ws.sheetProtection.deleteRows === true, 'editing actions allowed');
+  const a1 = ws.getCell('A1').protection; ok(!a1 || a1.locked !== false, 'header locked (Excel default, not written explicitly)');
+  eq(ws.getCell('D2').protection.locked, false, 'data unlocked');
+  eq(ws.getColumn(4).protection && ws.getColumn(4).protection.locked, false, 'column default unlocked for new rows');
+  doc.settings.protectHeaders = false;
+  const wb3 = new ExcelJS.Workbook(); await wb3.xlsx.load(await XlsxIO.save(doc, new Map()));
+  ok(!(wb3.getWorksheet('Intro').sheetProtection && wb3.getWorksheet('Intro').sheetProtection.sheet), 'protection off by setting');
+});
 test('xlsx: a workbook with the old _sheetwriter sheet is read and rewritten as .sheetwriter', async () => {
   const wb = new ExcelJS.Workbook();
   const ch = wb.addWorksheet('Essay'); ch.addRow(['no', 'kind', 'text']); ch.addRow(['1', 'p', 'Hello']);

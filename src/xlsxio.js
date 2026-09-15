@@ -19,6 +19,7 @@ const XlsxIO = (() => {
     count_columns: 'Columns whose words and characters the status bar counts (empty = the main column)',
     column_widths: 'Grid column widths in pixels, name:px pairs; also used for the Excel column widths',
     word_target: 'Word target for the whole workbook (0 = none); per-section targets go in the target column on heading rows',
+    protect_headers: 'yes/no: protect the header row of chapter sheets in Excel (data cells stay editable; Review → Unprotect Sheet to rename columns)',
     status_column: 'Column whose values show as coloured chips (any name; set in Settings → Column roles)',
     target_column: 'Column holding per-section word targets on heading rows (any name; set in Settings → Column roles)',
     track_updated: 'yes/no: keep an ".updated" column with the time each row was last edited in SheetWriter',
@@ -41,6 +42,32 @@ const XlsxIO = (() => {
     readme: 'Documentation',
   };
   const LINK_KEYS = ['app_url', 'download', 'repo', 'readme'];
+
+  /* Instructions written into the .sheetwriter sheet for people who open the workbook in Excel.
+   * RELEASE CHECKLIST: revise these lines whenever the file format changes, a system column is added,
+   * or what is safe to edit in Excel changes. tests.html checks that every system column is mentioned. */
+  function excelNotes(doc) {
+    const main = doc.mainColumn;
+    const sys = [...Model.RESERVED, ...Model.COMPUTED, ...Model.META].join(', ');
+    return [
+      `HOW TO WORK WITH THIS WORKBOOK IN EXCEL (written by ${APP.name} ${APP.version}; this block is rewritten on every save)`,
+      'SAFE TO DO IN EXCEL:',
+      `• Edit any text in your own columns (${main}, notes, sources, …). Cells are Markdown: **bold**, *italic*, [link](https://…).`,
+      '• Add rows anywhere. Leave .no empty and they go to the end of the chapter as paragraphs, or type a .no such as 2.1 to place them.',
+      '• Sort or filter rows: the .no column restores the order when the file is opened. Reorder rows by editing .no.',
+      '• Change .kind (h1, h2, h3, h4, p, s, x) and .indent (0, 1, 2 …).',
+      '• Add columns with any name that does not start with a dot or an underscore. Rename your own columns (then reassign roles in SheetWriter Settings if needed).',
+      '• Add key/value rows to this sheet: they are kept. Edit the values of the settings rows above.',
+      `• Add sheets without a ${main} column (data sheets): they are copied through unchanged, formatting included.`,
+      'LOST ON THE NEXT SAVE FROM SHEETWRITER:',
+      '• Cell colours, fonts, comments and formulas in chapter sheets (they are kept in data sheets). Hyperlinks survive as Markdown links.',
+      `• ${Model.COMPUTED.join(', ')}, ${Model.META.join(', ')}: rewritten from SheetWriter’s own data.`,
+      'BREAKS THE FILE OR ITS STRUCTURE:',
+      `• Renaming or deleting the dotted columns (${sys}) or the ${main} column, or giving two columns the same name. The header row is protected for this reason (Review → Unprotect Sheet lifts it).`,
+      '• Renaming this sheet, or changing the key column of the settings rows above.',
+      '• Merged cells in chapter sheets.',
+    ];
+  }
 
   function cellText(v) {
     if (v == null) return '';
@@ -86,6 +113,7 @@ const XlsxIO = (() => {
         case 'count_columns': doc.settings.countColumns = value.split(/[,;]/).map(s => s.trim()).filter(Boolean); break;
         case 'word_target': { const n = parseInt(value.replace(/\s/g, ''), 10); doc.settings.wordTarget = n > 0 ? n : 0; break; }
         case 'status_column': doc.settings.roles.status = value.trim(); break;
+        case 'protect_headers': doc.settings.protectHeaders = yes(value); break;
         case 'target_column': doc.settings.roles.target = value.trim(); break;
         case 'column_widths': {
           const w = {};
@@ -132,6 +160,7 @@ const XlsxIO = (() => {
       ['count_columns', (doc.settings.countColumns || []).join(', ')],
       ['column_widths', Object.entries(doc.settings.widths || {}).map(([k, v]) => `${k}:${v}`).join(', ')],
       ['word_target', String(doc.settings.wordTarget || 0)],
+      ['protect_headers', doc.settings.protectHeaders === false ? 'no' : 'yes'],
       ['status_column', (doc.settings.roles && doc.settings.roles.status) || ''],
       ['target_column', (doc.settings.roles && doc.settings.roles.target) || ''],
       ['track_updated', doc.settings.trackUpdated ? 'yes' : 'no'],
@@ -158,6 +187,11 @@ const XlsxIO = (() => {
       if (LINK_KEYS.includes(r[0])) row.getCell(2).value = { text: r[1], hyperlink: r[1] };
     }
     for (const [k, v] of Object.entries(doc.settings.extra || {})) ws.addRow([k, v[0] || '', v[1] || '']);
+    ws.addRow([]);
+    excelNotes(doc).forEach((line, k) => {
+      const row = ws.addRow(['', line, '']);
+      if (k === 0 || /^[A-Z ]+:$/.test(line)) row.getCell(2).font = { bold: true };
+    });
     ws.getRow(1).font = { bold: true };
     ws.eachRow(row => row.eachCell(c => { c.alignment = { wrapText: true, vertical: 'top' }; }));
     LINK_KEYS.forEach(() => {});
@@ -390,13 +424,24 @@ const XlsxIO = (() => {
       const hdr = ws.getRow(1);
       hdr.font = { bold: true };
       hdr.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE9E9E9' } };
+      columns.forEach((c, k) => { if (c.startsWith('.')) ws.getCell(1, k + 1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9D9D9' } }; });
       const xSplit = Math.max(0, Math.min(doc.settings.freezeColumns ?? 1, columns.length - 1));
       ws.views = [{ state: 'frozen', xSplit, ySplit: 1 }];
       ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: columns.length } };
+      if (doc.settings.protectHeaders !== false) {
+        // Lock only the header row: every column (including empty cells below the data) stays editable,
+        // rows and columns can be inserted, deleted, sorted and filtered. Renaming a header needs Unprotect Sheet.
+        columns.forEach((c, k) => { ws.getColumn(k + 1).protection = { locked: false }; });
+        ws.eachRow(row => row.eachCell({ includeEmpty: true }, cell => { cell.protection = { locked: row.number === 1 }; }));
+        try {
+          await ws.protect('', { selectLockedCells: true, selectUnlockedCells: true, formatCells: true, formatColumns: true, formatRows: true,
+            insertColumns: true, insertRows: true, insertHyperlinks: true, deleteColumns: true, deleteRows: true, sort: true, autoFilter: true, pivotTables: true });
+        } catch (e) { /* optional */ }
+      }
     }
     await writeSettings(wb, doc);
     return wb.xlsx.writeBuffer();
   }
 
-  return { load, save, cellText, sortByNo, SETTINGS_SHEET, MIME };
+  return { load, save, cellText, sortByNo, excelNotes, SETTINGS_SHEET, MIME };
 })();

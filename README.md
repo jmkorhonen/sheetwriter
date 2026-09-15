@@ -31,7 +31,12 @@ Files written before 0.10 used bare names (`kind`, `no`, …); they load as befo
 - Sheets without a `text` column are **data sheets**: shown read-only in the app and written back unchanged.
 - A plain spreadsheet without a `text` column is imported using its longest text column; `.no`, `.kind` and `.indent` are added.
 - Rows added in Excel without a number go to the end of the chapter, as paragraphs.
-- The `.sheetwriter` sheet (named `_sheetwriter` in files from before 0.10.1, which still load) holds title, author, main column, numbering and tracking settings, dates, and links to the editor. It is protected against accidental edits (Review → Unprotect Sheet in Excel to change it there). Rows you add to it are kept.
+- The `.sheetwriter` sheet (named `_sheetwriter` in files from before 0.10.1, which still load) holds title, author, column roles, numbering and tracking settings, dates, and links to the editor, followed by instructions for editing the workbook in Excel: what is safe, what is lost on the next save, what breaks the structure. It is protected against accidental edits (Review → Unprotect Sheet in Excel to change it there). Rows you add to it are kept.
+- Chapter sheets are protected too, but only their header row: every cell, row and column stays editable, sortable and filterable in Excel, while renaming or deleting a column needs Unprotect Sheet. A setting switches this off.
+
+### Editing in Excel
+
+Safe: editing text in your own columns (cells are Markdown), adding rows (leave `.no` empty and they go to the end of the chapter, or type a number such as `2.1` to place them), sorting and filtering (`.no` restores the order on load), changing `.kind` and `.indent`, adding or renaming your own columns, adding key/value rows to `.sheetwriter`, adding data sheets. Lost on the next save from SheetWriter: cell colours, fonts, comments and formulas on chapter sheets, and the computed columns, which are rewritten. Breaks the structure: renaming or deleting dotted columns or the text column, duplicate column names, renaming the `.sheetwriter` sheet, merged cells. The same list is written into every workbook.
 
 ## Numbering
 
@@ -53,7 +58,9 @@ Numbering continues from sheet to sheet by default, so sheets are containers rat
 | Ctrl+J, Ctrl+D, Ctrl+Shift+K | Merge with next, duplicate, delete. |
 | Ctrl+Shift+M | Move the row to another chapter (or drag it onto a sheet tab). |
 | Backspace | On an empty row: delete it. At the start of an indented row: outdent. Empty rows are also removed when you leave them. |
-| Ctrl+S, Ctrl+O, Ctrl+Z / Ctrl+Y, Ctrl+E | Save, open, undo / redo, export Markdown. |
+| Ctrl+F / Ctrl+H, F3 | Find, find and replace, next match. |
+| Ctrl+B / Ctrl+I / Ctrl+K | Bold, italic, link around the selection. |
+| Ctrl+S, Ctrl+O, Ctrl+Z / Ctrl+Y, Ctrl+E | Save, open, undo / redo, export Markdown or Word. |
 
 Press `?` in the toolbar or F1 for the full list.
 
@@ -77,10 +84,11 @@ Press `?` in the toolbar or F1 for the full list.
 
 ```
 src/           source files (vanilla JS, no framework, no build step to run)
-vendor/        ExcelJS 4.4.0 and marked 15.0.12 (MIT), inlined into the build
+vendor/        ExcelJS 4.4.0, marked 15.0.12, JSZip 3.10.1 (MIT), inlined into the build
 build.py       inlines everything into docs/index.html and docs/sheetwriter.html
 docs/          the built app, served by GitHub Pages
-tests.html     browser test page
+tests.html     browser test page; tests/run.js runs it headlessly (npm test)
+.github/       CI: tests in headless Chromium, and docs/ must match the sources
 PLAN.md        design notes and status
 ```
 
@@ -95,6 +103,12 @@ Run the tests in a browser: start a static server in this folder, for example `p
 ```bash
 npm install && npx playwright install chromium && npm test
 ```
+
+Release checklist:
+
+1. Bump `version` in `src/version.js`.
+2. If the file format, a system column, or what is safe to edit in Excel changed: revise `excelNotes()` in `src/xlsxio.js` (the instructions written into every workbook), the help dialog in `src/index.html`, and the "Editing in Excel" section above. A test fails if a system column is missing from the notes.
+3. `python build.py`, `npm test`, commit, push `main`, then push the tag (`git tag -a vX.Y.Z`). GitHub Pages deploys from `docs/`; CI reruns the tests and checks that `docs/` matches the sources.
 
 Notes for contributors:
 
