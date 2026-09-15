@@ -466,7 +466,7 @@ test('xlsx: save then load preserves rows, columns, settings, order; meta column
   eq(XlsxIO.cellText(ws.getRow(7).getCell(4).value), '=SUM(A1) is text, not a formula');
   eq(XlsxIO.cellText(ws.getRow(3).getCell(7).value), '4', 'words column for "First argument with **bold**."');
   eq(ws.getColumn(4).width, 100, 'Excel width from 700 px'); eq(ws.getColumn(5).width, 20);
-  const sws = wb.getWorksheet('_sheetwriter'); ok(sws, 'settings sheet exists');
+  const sws = wb.getWorksheet('.sheetwriter'); ok(sws, 'settings sheet exists'); ok(!wb.getWorksheet('_sheetwriter'), 'old name no longer written');
   const keys = []; sws.eachRow(r => keys.push(XlsxIO.cellText(r.getCell(1).value)));
   ok(keys.includes('repo') && keys.includes('download') && keys.includes('track_updated'), keys.join(','));
   ok(ws.views && ws.views[0].state === 'frozen', 'header frozen');
@@ -501,6 +501,16 @@ test('xlsx: Excel-edited chapter: sorted by another column, new rows without no/
   eq(d2.getColumn(2).width, 40);
   const { doc: d3 } = await XlsxIO.load(buf2);
   eq(d3.sheets[0].rows.map(r => r.Text), ['Title row', 'First', 'Second', 'rich text', 'Added in Excel']);
+});
+test('xlsx: a workbook with the old _sheetwriter sheet is read and rewritten as .sheetwriter', async () => {
+  const wb = new ExcelJS.Workbook();
+  const ch = wb.addWorksheet('Essay'); ch.addRow(['no', 'kind', 'text']); ch.addRow(['1', 'p', 'Hello']);
+  const st = wb.addWorksheet('_sheetwriter'); st.addRow(['key', 'value']); st.addRow(['title', 'Old title']); st.addRow(['numbering', 'per-sheet']);
+  const { doc, hasSettings } = await XlsxIO.load(await wb.xlsx.writeBuffer());
+  eq(hasSettings, true); eq(doc.settings.title, 'Old title'); eq(doc.settings.numbering, 'per-sheet');
+  eq(doc.sheets.map(s => s.name), ['Essay'], 'the old settings sheet is not treated as a data sheet');
+  const wb2 = new ExcelJS.Workbook(); await wb2.xlsx.load(await XlsxIO.save(doc, new Map()));
+  eq(wb2.worksheets.map(w => w.name), ['Essay', '.sheetwriter']);
 });
 test('xlsx: plain spreadsheet without a text column is imported by its longest column', async () => {
   const wb = new ExcelJS.Workbook();

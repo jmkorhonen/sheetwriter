@@ -31,7 +31,7 @@ Files written before 0.10 used bare names (`kind`, `no`, …); they load as befo
 - Sheets without a `text` column are **data sheets**: shown read-only in the app and written back unchanged.
 - A plain spreadsheet without a `text` column is imported using its longest text column; `.no`, `.kind` and `.indent` are added.
 - Rows added in Excel without a number go to the end of the chapter, as paragraphs.
-- The `_sheetwriter` sheet holds title, author, main column, numbering and tracking settings, dates, and links to the editor. It is protected against accidental edits (Review → Unprotect Sheet in Excel to change it there). Rows you add to it are kept.
+- The `.sheetwriter` sheet (named `_sheetwriter` in files from before 0.10.1, which still load) holds title, author, main column, numbering and tracking settings, dates, and links to the editor. It is protected against accidental edits (Review → Unprotect Sheet in Excel to change it there). Rows you add to it are kept.
 
 ## Numbering
 

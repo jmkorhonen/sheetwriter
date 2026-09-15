@@ -2,10 +2,11 @@
  *
  * Chapter sheets are rewritten from the model with a house style.
  * Data sheets (no main-text column) are copied through from the loaded workbook.
- * Settings and metadata live in a visible, protected sheet named "_sheetwriter".
+ * Settings and metadata live in a visible, protected sheet named ".sheetwriter" (same dot as the system columns).
  */
 const XlsxIO = (() => {
-  const SETTINGS_SHEET = '_sheetwriter';
+  const SETTINGS_SHEET = '.sheetwriter';
+  const LEGACY_SETTINGS_SHEET = '_sheetwriter'; // written before 0.10.1; read, never written
   const MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
   const KNOWN = {
@@ -247,10 +248,10 @@ const XlsxIO = (() => {
     const sources = new Map();
     const warnings = [];
 
-    const sws = wb.getWorksheet(SETTINGS_SHEET);
+    const sws = wb.getWorksheet(SETTINGS_SHEET) || wb.getWorksheet(LEGACY_SETTINGS_SHEET);
     if (sws) readSettings(sws, doc);
     let mainCased = !!sws; // without a settings sheet, adopt the casing used in the file
-    const sheets = orderedSheets(wb).filter(ws => ws.name !== SETTINGS_SHEET);
+    const sheets = orderedSheets(wb).filter(ws => ws.name !== SETTINGS_SHEET && ws.name !== LEGACY_SETTINGS_SHEET);
 
     for (const ws of sheets) {
       const headers = readHeaders(ws);
@@ -352,7 +353,7 @@ const XlsxIO = (() => {
     wb.modified = new Date();
     if (doc.settings.title) wb.title = doc.settings.title;
 
-    const usedNames = new Set([SETTINGS_SHEET.toLowerCase()]);
+    const usedNames = new Set([SETTINGS_SHEET.toLowerCase(), LEGACY_SETTINGS_SHEET.toLowerCase()]);
     for (const s of doc.sheets) {
       let name = safeSheetName(s.name), base = name, k = 2;
       while (usedNames.has(name.toLowerCase())) name = (base.slice(0, 28) + ' ' + k++);
