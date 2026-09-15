@@ -66,6 +66,7 @@ Numbering continues from sheet to sheet by default, so sheets are containers rat
 | Ctrl+. | Collapse / expand the rows under a heading, paragraph or indented row. Collapsed sections drag as one unit. |
 | Ctrl+J, Ctrl+D, Ctrl+Shift+K | Merge with next, duplicate, delete. |
 | Ctrl+Shift+M | Move the row to another chapter (or drag it onto a sheet tab). |
+| Drag a selected row | With rows selected (click ⋮⋮, Shift or Ctrl to extend), drag any of them to move them all, above or below another row or onto a sheet tab. |
 | Backspace | On an empty row: delete it. At the start of an indented row: outdent. Empty rows are also removed when you leave them. |
 | Ctrl+F / Ctrl+H, F3 | Find, find and replace, next match. |
 | Ctrl+B / Ctrl+I / Ctrl+K | Bold, italic, link around the selection. |

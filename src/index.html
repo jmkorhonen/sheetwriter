@@ -72,6 +72,7 @@
   <button type="button" data-act="delete" data-needs="sel" class="danger" title="Delete the selected rows (Delete)">Delete</button>
   <button type="button" data-act="clear" data-needs="sel" title="Clear the selection (Esc)">✕</button>
   <button type="button" data-act="clearclip" data-needs="clip" title="Forget the copied rows">Clear clipboard</button>
+  <span id="sel-hint" class="muted"></span>
 </div>
 <nav id="tabs"></nav>
 <footer id="status"></footer>
@@ -246,7 +247,7 @@
       <tr><td>Ctrl+A</td><td>Select all rows (when no text field is focused).</td></tr>
       <tr><td>Ctrl+C / X / V / D, Delete</td><td>Copy, cut, paste, duplicate, delete the selected rows (when no text field is focused; the bar at the bottom has the same buttons). Pasting keeps every column, also into other sheets, and adds missing columns.</td></tr>
       <tr><td>Esc</td><td>Clear the selection.</td></tr>
-      <tr><td>Drag a selected ⋮⋮</td><td>Move all selected rows, also onto another sheet's tab.</td></tr>
+      <tr><td>Drag a selected row</td><td>Move all selected rows together (drag the ⋮⋮ handle or the card itself; in Grid, the row), above or below another row, or onto another sheet's tab. Rows selected in a different order or with gaps arrive in sheet order, as one group.</td></tr>
     </table>
     <h3>Global</h3>
     <table>

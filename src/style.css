@@ -107,7 +107,8 @@ body.toc-open #toc { display: flex; }
 #selbar button:disabled { color: var(--dim); background: var(--btn); cursor: default; }
 #selbar button.danger { color: var(--danger); }
 #selbar button.danger:hover { background: var(--warn); color: var(--paper); border-color: var(--warn); }
-.card.selected { background: var(--sel); border-color: var(--selborder); }
+.card.selected { background: var(--sel); border-color: var(--selborder); cursor: grab; }
+table.grid tr.selected { cursor: grab; }
 .card.selected .gutter .num { color: var(--accent); font-weight: 600; }
 table.grid tr.selected td { background: var(--sel); }
 .num, .handle, td.num, td.handle-col { user-select: none; }

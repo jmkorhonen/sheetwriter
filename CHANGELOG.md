@@ -2,6 +2,9 @@
 
 One line per release; the commit under each tag has the details. Dates are the day the tag was pushed.
 
+## 0.19.1 (2026-09-15)
+Selected cards and grid rows drag as a whole (not just their handles); the selection bar says so.
+
 ## 0.19.0 (2026-09-15)
 Long sheets stay responsive (off-screen cards and read blocks are not laid out; Grid autosizing batched, 30× faster). Defaults for new rows. Merge a chapter into the previous one; a section to a new sheet from the Contents pane. Excel behaviour verified with real Excel: kept formatting, drop-down sort and filter on protected sheets. Phone-width layout: floating contents pane, narrower cards. Screenshots and a GIF in the README.
 

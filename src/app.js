@@ -109,7 +109,9 @@
   function applySelection() {
     viewRoot.querySelectorAll('.card[data-i], tr[data-i]').forEach(h => {
       const row = sheet().rows[+h.dataset.i];
-      h.classList.toggle('selected', !!row && state.sel.has(row._id));
+      const on = !!row && state.sel.has(row._id);
+      h.classList.toggle('selected', on);
+      if (on) { h.setAttribute('draggable', 'true'); if (h.classList.contains('card')) h.title = 'Drag to move the selected rows'; } else { h.removeAttribute('draggable'); if (h.classList.contains('card')) h.removeAttribute('title'); }
     });
     renderSelBar();
   }
@@ -143,6 +145,7 @@
     selBar.querySelectorAll('[data-needs=sel]').forEach(b => b.disabled = !n);
     selBar.querySelectorAll('[data-needs=clip]').forEach(b => b.disabled = !clip);
     $('#sel-paste').textContent = n ? 'Paste after selection' : 'Paste after current row';
+    $('#sel-hint').textContent = n > 1 ? 'Drag any selected row to move them all, also onto a sheet tab.' : n === 1 ? 'Shift-click or Ctrl-click ⋮⋮ to select more; drag to move.' : '';
   }
   function copySelection() {
     const idxs = selectedIndexes(); if (!idxs.length) return;
@@ -908,13 +911,15 @@
     const th = e.target.closest && e.target.closest('th.col-drag');
     if (th) { dragCol = th.dataset.col; e.dataTransfer.setData('text/sw-col', dragCol); e.dataTransfer.effectAllowed = 'move'; th.classList.add('dragging'); return; }
     const h = e.target.closest && e.target.closest('.handle');
-    if (h) {
-      dragRow = rowIndexOf(h);
+    // a selected card or grid row drags as a whole, except from its text fields and controls
+    const selHolder = !h && e.target.closest && !e.target.closest('textarea, input, select, button, a') ? e.target.closest('.card.selected, tr.selected') : null;
+    if (h || selHolder) {
+      dragRow = h ? rowIndexOf(h) : +selHolder.dataset.i;
       const row = sheet().rows[dragRow];
       dragSel = !!row && state.sel.has(row._id) && selectedIndexes().length > 1;
       e.dataTransfer.setData('text/sw-row', String(dragRow)); e.dataTransfer.effectAllowed = 'move';
       if (dragSel) viewRoot.querySelectorAll('.selected').forEach(n => n.classList.add('dragging'));
-      else { const holder = holderOf(h); if (holder) holder.classList.add('dragging'); }
+      else { const holder = h ? holderOf(h) : selHolder; if (holder) holder.classList.add('dragging'); }
       return;
     }
     const tab = e.target.closest && e.target.closest('.tab[data-i]');

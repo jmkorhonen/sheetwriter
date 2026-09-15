@@ -189,9 +189,10 @@ const Views = (() => {
     const hidden = collapsed ? Model.sectionEnd(sheet.rows, i) - i - 1 : 0;
     const indent = num.indents[i] || 0;
     const selected = ctx.selected && ctx.selected.has(row._id);
-    const c = el('div', { class: 'card kind-' + kind + (side.length ? ' with-side' : '') + (collapsed ? ' collapsed' : '') + (indent ? ' indented' : '') + (selected ? ' selected' : ''), 'data-i': i });
+    // A selected card is draggable as a whole (its text fields excepted), so a selection moves without aiming for the handle.
+    const c = el('div', { class: 'card kind-' + kind + (side.length ? ' with-side' : '') + (collapsed ? ' collapsed' : '') + (indent ? ' indented' : '') + (selected ? ' selected' : ''), 'data-i': i, draggable: selected ? 'true' : null, title: selected ? 'Drag to move the selected rows' : null });
     const gutter = el('div', { class: 'gutter' },
-      el('span', { class: 'handle', draggable: 'true', title: 'Click to select the row (Shift: range, Ctrl: add), drag to move' }, '⋮⋮'),
+      el('span', { class: 'handle', draggable: 'true', title: 'Click to select the row (Shift: range, Ctrl: add). Drag to move the row with its sub-rows; when rows are selected, drag any of them to move them all.' }, '⋮⋮'),
       collapsible
         ? el('button', { class: 'collapse', type: 'button', title: (collapsed ? 'Expand' : 'Collapse') + ' (Ctrl+.)' }, collapsed ? '▸' : '▾')
         : el('span', { class: 'collapse none' }, ''),
@@ -317,7 +318,8 @@ const Views = (() => {
       const row = sheet.rows[i];
       const collapsible = Model.isCollapsible(sheet.rows, i);
       const collapsed = collapsible && ctx.collapsed && ctx.collapsed.has(row._id);
-      const tr = el('tr', { class: 'kind-' + Model.normKind(row['.kind']) + (ctx.selected && ctx.selected.has(row._id) ? ' selected' : '') + (collapsed ? ' collapsed' : ''), 'data-i': i });
+      const selectedRow = !!(ctx.selected && ctx.selected.has(row._id));
+      const tr = el('tr', { class: 'kind-' + Model.normKind(row['.kind']) + (selectedRow ? ' selected' : '') + (collapsed ? ' collapsed' : ''), 'data-i': i, draggable: selectedRow ? 'true' : null });
       tr.appendChild(el('td', { class: 'handle-col' }, el('span', { class: 'handle', draggable: 'true', title: 'Click to select the row (Shift: range, Ctrl: add), drag to move' }, '⋮⋮')));
       for (const col of columns) {
         if (col === '.no') {
