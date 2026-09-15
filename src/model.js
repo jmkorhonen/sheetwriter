@@ -509,6 +509,43 @@ const Model = (() => {
     doc.sheets.splice(to, 0, s);
     return to;
   }
+  // ---- find and replace ----
+  /** All occurrences of q: [{si, i, col, index, len}] in document order. columns: null = every user column. */
+  function findMatches(doc, q, { matchCase = false, scope = 'all', si = 0, columns = null } = {}) {
+    if (!q) return [];
+    const needle = matchCase ? q : q.toLowerCase();
+    const out = [];
+    doc.sheets.forEach((s, k) => {
+      if (s.kind !== 'chapter' || (scope !== 'all' && k !== si)) return;
+      const cols = columns ? columns.filter(c => s.columns.includes(c)) : userColumns(doc, s);
+      s.rows.forEach((r, i) => {
+        for (const c of cols) {
+          const v = String(r[c] || '');
+          const hay = matchCase ? v : v.toLowerCase();
+          let from = 0, idx;
+          while ((idx = hay.indexOf(needle, from)) >= 0) { out.push({ si: k, i, col: c, index: idx, len: q.length }); from = idx + Math.max(1, q.length); }
+        }
+      });
+    });
+    return out;
+  }
+  /** Replace the given matches (from findMatches on the same document state). Returns the count. */
+  function replaceMatches(doc, matches, replacement) {
+    const byCell = new Map();
+    for (const m of matches) { const key = `${m.si} ${m.i} ${m.col}`; if (!byCell.has(key)) byCell.set(key, []); byCell.get(key).push(m); }
+    let n = 0;
+    for (const [key, ms] of byCell) {
+      const [si, i, col] = key.split(' ');
+      const s = doc.sheets[+si]; const r = s && s.rows[+i];
+      if (!r) continue;
+      let v = String(r[col] || '');
+      ms.sort((a, b) => b.index - a.index);
+      for (const m of ms) { v = v.slice(0, m.index) + replacement + v.slice(m.index + m.len); n++; }
+      setCell(doc, +si, +i, col, v);
+    }
+    return n;
+  }
+
   // ---- multi-row operations (selection clipboard) ----
   /** Plain copies of rows without private fields, safe to keep in a clipboard. */
   function cloneRows(rows) {
@@ -597,7 +634,7 @@ const Model = (() => {
     addRow, deleteRow, moveRow, duplicateRow, splitRow, mergeRow, setCell, setIndent, shiftIndent, cycleKind, shiftKind,
     validColumnName, addColumn, renameColumn, deleteColumn, moveColumn, moveColumnBefore, columnData, syncColumnOrder, setMainColumn, defaultView, columnWidth,
     addSheet, renameSheet, deleteSheet, moveSheet, moveRowsToSheet, uniqueSheetName, importRows,
-    cloneRows, deleteRows, insertRows, moveRows,
+    cloneRows, deleteRows, insertRows, moveRows, findMatches, replaceMatches,
   };
 })();
 if (typeof module !== 'undefined') module.exports = Model;

@@ -28,3 +28,5 @@ Bundled third-party software (inlined into the built HTML file):
   https://github.com/exceljs/exceljs
 - marked 15.0.12 — MIT License, Copyright (c) 2011-2025 Christopher Jeffrey
   https://github.com/markedjs/marked
+- JSZip 3.10.1 — MIT License, Copyright (c) 2009-2016 Stuart Knightley, David Duponchel,
+  Franz Buchinger, António Afonso — https://github.com/Stuk/jszip

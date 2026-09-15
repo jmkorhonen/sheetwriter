@@ -344,12 +344,24 @@ const Views = (() => {
       indented: ctx.readIndented || 'paragraphs',
       sheetTitles: ctx.readScope === 'all' && doc.settings.numbering === 'per-sheet' && Model.chapterSheets(doc).length > 1,
     };
-    const art = el('article', { class: 'read', html: MD.render(Exporter.toMarkdown(doc, opts)) });
-    if (ctx.readScope !== 'all' && sheet && sheet.kind !== 'chapter') art.innerHTML = '<p class="muted">Data sheet: nothing to read here.</p>';
-    // Tag rendered headings with their rows so the table of contents can scroll to them.
-    const order = Exporter.headingOrder(doc, opts);
-    const hs = art.querySelectorAll('h1, h2, h3, h4, h5, h6');
-    if (hs.length === order.length) hs.forEach((h, k) => { const o = order[k]; if (o.si != null) { h.dataset.si = o.si; h.dataset.i = o.i; } else h.dataset.sheet = o.sheetTitle; });
+    const art = el('article', { class: 'read' });
+    if (ctx.readScope !== 'all' && sheet && sheet.kind !== 'chapter') { art.innerHTML = '<p class="muted">Data sheet: nothing to read here.</p>'; root.appendChild(art); return; }
+    // Rendered block by block so every heading and paragraph knows its row (click to edit, scroll spy, contents pane).
+    let listBuf = null;
+    const flushList = () => {
+      if (!listBuf) return;
+      art.appendChild(el('div', { class: 'rblock rlist', 'data-si': listBuf.si, 'data-i': listBuf.i, title: 'Click to edit', html: MD.render(listBuf.md.join('\n')) }));
+      listBuf = null;
+    };
+    for (const b of Exporter.toBlocks(doc, opts)) {
+      if (b.type === 'para' && b.list) { if (!listBuf) listBuf = { si: b.si, i: b.i, md: [] }; listBuf.md.push(Exporter.blockMarkdown(b)); continue; }
+      flushList();
+      if (b.type === 'sheetTitle') art.appendChild(el('h1', { class: 'rblock rsheet', 'data-sheet': b.si, html: MD.renderInline(b.text) }));
+      else if (b.type === 'heading') art.appendChild(el('h' + b.level, { class: 'rblock', 'data-si': b.si, 'data-i': b.i, title: 'Click to edit', html: MD.renderInline(b.text) }));
+      else if (b.type === 'para') art.appendChild(el('div', { class: 'rblock rpara' + (b.indent ? ' indent-' + Math.min(b.indent, 6) : ''), 'data-si': b.si, 'data-i': b.i, title: 'Click to edit', html: MD.render(b.text) }));
+      else if (b.type === 'side') art.appendChild(el('div', { class: 'rblock rside', 'data-si': b.si, 'data-i': b.i, html: MD.render('> **' + b.label + ':** ' + b.values.map(v => v.replace(/\n/g, ' ')).join('\n> ')) }));
+    }
+    flushList();
     root.appendChild(art);
   }
 

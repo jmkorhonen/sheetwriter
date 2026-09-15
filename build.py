@@ -1,4 +1,5 @@
 """Inline src/ and vendor/ into one self-contained HTML file.
+Vendored libraries: ExcelJS, marked, JSZip (all MIT).
 
 Writes docs/index.html (served by GitHub Pages) and docs/sheetwriter.html
 (the same file under a name that is convenient to download and keep).

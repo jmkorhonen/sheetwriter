@@ -43,6 +43,19 @@
   <div><span id="dirty-dot" title="All changes saved"></span><span id="doc-title">untitled</span></div>
 </header>
 
+<div id="findbar" hidden>
+  <input type="search" id="find-q" placeholder="Find…" spellcheck="false">
+  <input type="text" id="find-r" placeholder="Replace with…" spellcheck="false">
+  <label class="chk"><input type="checkbox" id="find-case"> Match case</label>
+  <select id="find-scope"><option value="all">All sheets</option><option value="sheet">This sheet</option></select>
+  <select id="find-cols"><option value="all">All columns</option><option value="main">Text column only</option></select>
+  <span id="find-info"></span>
+  <button type="button" id="find-prev" title="Previous match (Shift+F3)">↑</button>
+  <button type="button" id="find-next" title="Next match (F3, Enter)">↓</button>
+  <button type="button" id="find-replace" title="Replace this match and go to the next">Replace</button>
+  <button type="button" id="find-replace-all" title="Replace every match (one undo step)">Replace all</button>
+  <button type="button" id="find-close" title="Close (Esc)">×</button>
+</div>
 <div id="workspace">
   <aside id="toc" aria-label="Table of contents"></aside>
   <main id="view" class="view-draft"></main>
@@ -78,6 +91,7 @@
       <span id="ex-info" class="muted"></span>
       <button type="button" id="ex-copy">Copy</button>
       <button type="button" id="ex-download" class="primary">Download .md</button>
+      <button type="button" id="ex-docx" class="primary" title="Word document with heading styles, formatting from the Markdown, indented rows and side notes">Download .docx</button>
       <button type="button" data-close>Close</button>
     </div>
   </form>
@@ -124,12 +138,26 @@
     <h3>Editor (this browser)</h3>
     <div class="fields">
       <label>Enter key <select id="st-enter"><option value="row">Enter = new row, Shift+Enter = line break</option><option value="newline">Enter = line break, Shift+Enter = new row</option></select></label>
+      <label class="chk"><input type="checkbox" id="st-copy-enabled"> <span>Write an autosave copy to a second workbook every <select id="st-copy-minutes"><option value="1">1</option><option value="2">2</option><option value="5">5</option><option value="10">10</option></select> minutes while there are unsaved changes. File: <strong id="st-copy-name"></strong> <button type="button" class="small" id="st-copy-choose">Choose file…</button></span></label>
       <label>Indent when a row starts with <select id="st-indent"><option value="   ">three spaces</option><option value="  ">two spaces</option><option value="    ">four spaces</option><option value="> ">&gt; and a space</option><option value="">nothing (Tab only)</option></select></label>
     </div>
     <p class="muted" style="font-size:12.5px;margin:4px 0 0">The display state (view, sheet, row, table of contents, visible columns, counts) is saved with the workbook too, from the Columns ▾ and Contents buttons.</p>
     <div class="actions">
       <button type="button" data-close>Cancel</button>
       <button type="button" id="st-save" class="primary">Save settings</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-conflict">
+  <form method="dialog" class="dlg">
+    <h2>File changed on disk</h2>
+    <p id="conflict-text"></p>
+    <p class="muted" style="font-size:13px">Overwrite if the disk changes do not matter. Save as a copy to keep both, then compare in Excel. Cancel to look first.</p>
+    <div class="actions">
+      <button type="button" id="conflict-cancel">Cancel</button>
+      <button type="button" id="conflict-copy">Save as a copy…</button>
+      <button type="button" id="conflict-overwrite" class="primary">Overwrite</button>
     </div>
   </form>
 </dialog>
@@ -192,7 +220,8 @@
       <tr><td>Ctrl+S / Ctrl+Shift+S</td><td>Save / Save as</td></tr>
       <tr><td>Ctrl+O</td><td>Open</td></tr>
       <tr><td>Ctrl+Z / Ctrl+Y</td><td>Undo / redo</td></tr>
-      <tr><td>Ctrl+E</td><td>Export Markdown</td></tr>
+      <tr><td>Ctrl+E</td><td>Export Markdown or Word</td></tr>
+      <tr><td>Ctrl+F / Ctrl+H</td><td>Find / find and replace across the workbook; F3 and Shift+F3 step through matches</td></tr>
       <tr><td>Ctrl+PageUp / PageDown</td><td>Previous / next sheet</td></tr>
     </table>
     <h3>Markdown import</h3>
@@ -202,6 +231,7 @@
     <h3>Grid, columns and tabs</h3>
     <p>Columns are shared by all chapter sheets: adding, renaming, deleting or reordering a column applies everywhere, and deleting warns if any sheet holds data in it. Click a column name to rename it, drag a column header to reorder, drag its right edge to resize. The – button hides a column in Grid view; the Columns ▾ button chooses which columns the Grid and Draft views show. Rows hide in Grid by collapsing (▾ in the number cell, Collapse all) or by typing in the filter box above the table. Double-click a sheet tab to rename it. Drag rows by the ⋮⋮ handle, drag tabs to reorder chapters. Click the title in the toolbar to change it.</p>
     <h3>Files</h3>
+    <p>Saving checks whether the file changed on disk since it was opened (edited in Excel, say) and asks before overwriting. An autosave snapshot is kept in the browser every 5 minutes (Recent ▾ → Recover an autosave…), and Settings can add an autosave copy written to a second workbook, such as <code>name_AUTOSAVE.xlsx</code>, at an interval of your choice. Excel hyperlinks are read as Markdown links. In Read view, click any paragraph or heading to edit it.</p>
     <p>In Edge and Chrome the app opens and saves the .xlsx in place and keeps a Recent list. In Firefox and Safari, Open uses a file picker and Save downloads a copy. Unsaved work is also kept in the browser and offered back on the next start. Sheets without a main text column are data sheets: shown read-only, written back unchanged. A workbook edited or sorted in Excel is put back in <code>no</code> order on load; rows without a number go last. A plain spreadsheet without a <code>text</code> column is imported using its longest text column.</p>
     <div class="actions"><button type="button" data-close class="primary">Close</button></div>
   </form>
@@ -218,6 +248,8 @@
 <script src="md.js"></script>
 <script src="model.js"></script>
 <script src="exporter.js"></script>
+<script src="../vendor/jszip.min.js"></script>
+<script src="docx.js"></script>
 <script src="importer.js"></script>
 <script src="xlsxio.js"></script>
 <script src="views.js"></script>

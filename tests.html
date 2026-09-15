@@ -20,6 +20,8 @@
 <script src="src/md.js"></script>
 <script src="src/model.js"></script>
 <script src="src/exporter.js"></script>
+<script src="vendor/jszip.min.js"></script>
+<script src="src/docx.js"></script>
 <script src="src/importer.js"></script>
 <script src="src/xlsxio.js"></script>
 <script>
@@ -334,6 +336,51 @@ test('model: importRows creates side columns, appends or replaces', () => {
   eq(doc.sheets[1].rows[3].notes, 'n'); eq(doc.sheets[1].rows[3].indent, '1');
   Model.importRows(doc, 1, imported, { replace: true }); eq(doc.sheets[1].rows.length, 2);
   const si = Model.addSheet(doc, 'Fresh'); Model.importRows(doc, si, imported); eq(doc.sheets[si].rows.length, 2, 'placeholder empty row replaced');
+});
+
+// ---- blocks, docx, find ----
+test('export: blocks address rows, including side notes and lists', () => {
+  const doc = sampleDoc(); doc.sheets[0].rows[4].indent = '1';
+  const b = Exporter.toBlocks(doc, { scope: 0, indented: 'lists', side: { column: 'sources', mode: 'quote' } });
+  eq(b.map(x => [x.type, x.i]), [['heading', 0], ['para', 1], ['side', 1], ['para', 4], ['para', 5]]);
+  eq(b[2].values, ['Smith 2020', 'Jones 2021']); eq(b[3].list, true); eq(b[3].indent, 1);
+  eq(Exporter.blockMarkdown(b[3]), '- Ääkköset ja ö toimivat.');
+});
+test('docx: document xml has heading styles, runs with formatting, side notes', async () => {
+  const doc = sampleDoc(); doc.sheets[0].rows[4].indent = '1';
+  const xml = Docx.documentXml(doc, { scope: 'all', side: { column: 'sources', mode: 'quote' } });
+  ok(xml.includes('<w:pStyle w:val="Heading1"/>') && xml.includes('Why rows'), 'heading');
+  ok(xml.includes('<w:b/></w:rPr><w:t xml:space="preserve">bold</w:t>'), 'bold run');
+  ok(xml.includes('<w:pStyle w:val="SideNote"/>') && xml.includes('Smith 2020'), 'side note');
+  ok(xml.includes('<w:ind w:left="360"/>'), 'indented row');
+  ok(xml.includes('=SUM(A1) is text, not a formula') && !xml.includes('Parked idea'), 'x row omitted');
+  const p = Docx.paragraphs('A *b* and `c` with [d](https://e.f)\n\n- one\n- two');
+  eq(p.map(x => x.prefix + x.runs.map(r => (r.i ? '/' : '') + (r.code ? '`' : '') + (r.text || '')).join('')), ['A /b and `c with d/ (https://e.f)', '• one', '• two']);
+  const blob = await Docx.build(doc, { scope: 'all' });
+  ok(blob.size > 1500 && blob.type.includes('wordprocessingml'), 'zip built');
+  const z = await JSZip.loadAsync(blob); ok(z.file('word/document.xml') && z.file('[Content_Types].xml'), 'parts present');
+});
+test('model: find and replace across sheets and columns', () => {
+  const doc = sampleDoc();
+  const m = Model.findMatches(doc, 'ARGUMENT');
+  eq(m.map(x => [x.si, x.i, x.col, x.index]), [[0, 1, 'text', 6]]);
+  eq(Model.findMatches(doc, 'ARGUMENT', { matchCase: true }).length, 0);
+  eq(Model.findMatches(doc, 'e', { scope: 'sheet', si: 1 }).length, 4, 'both rows of sheet 2, several hits per cell');
+  for (const part of ['word/document.xml', 'word/styles.xml']) {
+    const text = part.endsWith('styles.xml') ? null : Docx.documentXml(doc, { scope: 'all', side: { column: 'sources', mode: 'quote' } });
+    if (text) { const err = new DOMParser().parseFromString(text, 'application/xml').querySelector('parsererror'); ok(!err, part + ' is well-formed XML'); }
+  }
+  eq(Model.findMatches(doc, '2020', { columns: ['text'] }).length, 0); eq(Model.findMatches(doc, '2020').length, 1);
+  const all = Model.findMatches(doc, 'the');
+  const n = Model.replaceMatches(doc, all, 'THE');
+  eq(n, all.length); eq(doc.sheets[0].rows[2].text, 'Second sentence of THE same paragraph.');
+  eq(Model.findMatches(doc, 'the').length, all.length, 'case-insensitive search still finds the replacements');
+  eq(Model.findMatches(doc, 'the', { matchCase: true }).length, 0);
+});
+test('xlsx: Excel hyperlinks become Markdown links', () => {
+  eq(XlsxIO.cellText({ text: 'Smith 2020', hyperlink: 'https://doi.org/10.1/x' }), '[Smith 2020](https://doi.org/10.1/x)');
+  eq(XlsxIO.cellText({ text: 'https://a.b', hyperlink: 'https://a.b' }), 'https://a.b');
+  eq(XlsxIO.cellText({ text: { richText: [{ text: 'Rich' }] }, hyperlink: 'mailto:x@y.z' }), '[Rich](mailto:x@y.z)');
 });
 
 // ---- markdown ----

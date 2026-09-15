@@ -43,7 +43,11 @@ const XlsxIO = (() => {
     if (v instanceof Date) return isNaN(v) ? '' : v.toISOString().slice(0, 10);
     if (typeof v === 'object') {
       if (Array.isArray(v.richText)) return v.richText.map(t => t.text).join('');
-      if (v.hyperlink !== undefined) return cellText(v.text) || String(v.hyperlink);
+      if (v.hyperlink !== undefined) {
+        // Excel hyperlinks become Markdown links so the URL survives the round trip (Excel then shows the Markdown).
+        const t = cellText(v.text), url = String(v.hyperlink).replace(/^mailto:/i, m => m);
+        return t && t !== url ? `[${t}](${url})` : url;
+      }
       if (v.formula !== undefined || v.sharedFormula !== undefined) return cellText(v.result);
       if (v.error) return String(v.error);
       return String(v);

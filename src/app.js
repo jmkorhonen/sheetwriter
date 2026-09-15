@@ -6,7 +6,7 @@
 
   // Editor preferences live in this browser, not in the workbook.
   const PREF_KEY = 'sheetwriter.prefs';
-  const prefs = Object.assign({ enterMode: 'row', indentTrigger: '   ' }, (() => { try { return JSON.parse(localStorage.getItem(PREF_KEY) || '{}'); } catch (e) { return {}; } })());
+  const prefs = Object.assign({ enterMode: 'row', indentTrigger: '   ', autosaveCopy: { enabled: false, minutes: 2 } }, (() => { try { return JSON.parse(localStorage.getItem(PREF_KEY) || '{}'); } catch (e) { return {}; } })());
   function savePrefs() { try { localStorage.setItem(PREF_KEY, JSON.stringify(prefs)); } catch (e) { /* ignore */ } }
 
   const state = {
@@ -14,6 +14,7 @@
     fileHandle: null, fileName: 'untitled.xlsx', sources: new Map(), dirty: false,
     readScope: 'sheet', readNumbering: '', readColumn: null, readIndented: 'paragraphs',
     focus: null, lastFocus: null, readPos: null,
+    fileMtime: null, copyHandle: null, copyName: '', copyAt: null, copyNeedsPermission: false,
     collapsed: new Set(), editColumn: null, editSheet: null,
     sel: new Set(), selAnchor: null, clipboard: null, // row selection (ids, current sheet) and the internal row clipboard
     // Display state; saved into the workbook on save and restored on load.
@@ -241,13 +242,13 @@
       state.lastFocus = { i, col, caret: 0 };
       state.readPos = { si, i };
       render();
-      // paragraphs are not tagged in the rendered prose; scroll to the heading that contains the row
-      const h = Model.isHeading(rows[i].kind) ? i : Model.headingFor(rows, i);
-      const el = h != null ? viewRoot.querySelector(`article.read [data-si="${si}"][data-i="${h}"]`) : null;
+      // every heading and paragraph is tagged; an "s" or "x" row belongs to the nearest block above it
+      let el = null;
+      for (let j = i; j >= 0 && !el; j--) el = viewRoot.querySelector(`article.read [data-si="${si}"][data-i="${j}"]`);
       if (el) el.scrollIntoView({ block: opts.block || 'start' }); else viewRoot.scrollTop = 0;
       return;
     }
-    state.focus = { i, col, caret: opts.caret == null ? 'end' : opts.caret, block: opts.block || 'start' };
+    state.focus = { i, col, caret: opts.caret == null ? 'end' : opts.caret, block: opts.block || 'start', selectLen: opts.selectLen || 0 };
     state.lastFocus = { i, col, caret: opts.caret == null ? 0 : opts.caret };
     render();
   }
@@ -263,7 +264,17 @@
     if (i != null && s && s.kind === 'chapter' && s.rows[i]) goToRow(si, i, { block: 'center', col: mode === 'grid' || mode === 'draft' ? col : null, caret });
     else render();
   }
-  // Read view scroll spy: remember which heading is being read so other views (and the contents pane) can follow.
+  // Click a paragraph or heading in Read view to edit that row in Draft.
+  viewRoot.addEventListener('click', e => {
+    if (state.view !== 'read' || e.target.closest('a')) return;
+    const b = e.target.closest('.rblock[data-i]');
+    if (!b) return;
+    const si = +b.dataset.si, i = +b.dataset.i;
+    state.readPos = { si, i };
+    state.lastFocus = { i, col: state.doc.mainColumn, caret: 0 };
+    switchView('draft');
+  });
+  // Read view scroll spy: remember which block is being read so other views (and the contents pane) can follow.
   viewRoot.addEventListener('scroll', () => {
     if (state.view !== 'read') return;
     const top = viewRoot.getBoundingClientRect().top + 60;
@@ -273,8 +284,71 @@
     const pos = { si: +cur.dataset.si, i: +cur.dataset.i };
     if (state.readPos && state.readPos.si === pos.si && state.readPos.i === pos.i) return;
     state.readPos = pos;
-    if (state.ui.toc !== 'off') Views.updateTocCurrent(tocRoot, pos);
+    if (state.ui.toc !== 'off') { const rows = state.doc.sheets[pos.si].rows; const h = Model.headingFor(rows, pos.i); Views.updateTocCurrent(tocRoot, h == null ? null : { si: pos.si, i: h }); }
   }, { passive: true });
+
+  // ---------- find and replace ----------
+  const findBar = $('#findbar');
+  const find = { matches: [], cur: -1, jumped: false };
+  function findOpts() {
+    return { matchCase: $('#find-case').checked, scope: $('#find-scope').value === 'all' ? 'all' : 'sheet', si: state.si, columns: $('#find-cols').value === 'main' ? [state.doc.mainColumn] : null };
+  }
+  function openFind(replace) {
+    findBar.hidden = false;
+    runFind(true);
+    const box = replace ? $('#find-r') : $('#find-q');
+    box.focus(); box.select();
+  }
+  function closeFind() { findBar.hidden = true; find.matches = []; find.cur = -1; find.jumped = false; }
+  function runFind(keepCur) {
+    const q = $('#find-q').value;
+    find.matches = Model.findMatches(state.doc, q, findOpts());
+    if (!keepCur || find.cur >= find.matches.length) { find.cur = find.matches.length ? 0 : -1; find.jumped = false; }
+    $('#find-info').textContent = q ? (find.matches.length ? `${find.cur + 1} of ${find.matches.length}` : 'No matches') : '';
+    $('#find-replace').disabled = $('#find-replace-all').disabled = !find.matches.length;
+  }
+  function gotoMatch(k) {
+    if (!find.matches.length) return;
+    find.cur = (k + find.matches.length) % find.matches.length;
+    find.jumped = true;
+    const m = find.matches[find.cur];
+    $('#find-info').textContent = `${find.cur + 1} of ${find.matches.length}`;
+    if (state.view === 'read') state.view = 'draft';
+    goToRow(m.si, m.i, { col: m.col, caret: m.index, block: 'center', selectLen: m.len });
+  }
+  function replaceCurrent() {
+    if (!find.matches.length) return;
+    const m = find.matches[Math.max(0, find.cur)];
+    const cur = find.cur;
+    mutate(d => Model.replaceMatches(d, [m], $('#find-r').value));
+    runFind(true);
+    find.cur = Math.min(Math.max(cur, 0), find.matches.length - 1);
+    if (find.matches.length) gotoMatch(find.cur); else $('#find-info').textContent = 'No more matches';
+  }
+  function replaceAll() {
+    if (!find.matches.length) return;
+    const n = find.matches.length;
+    mutate(d => Model.replaceMatches(d, find.matches, $('#find-r').value));
+    runFind(false);
+    $('#find-info').textContent = `Replaced ${n}`;
+  }
+  findBar.addEventListener('input', e => { if (e.target.id === 'find-q') runFind(false); });
+  findBar.addEventListener('change', e => { if (e.target.id !== 'find-q' && e.target.id !== 'find-r') runFind(false); });
+  findBar.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { e.preventDefault(); closeFind(); return; }
+    if (e.key === 'Enter' && e.target.id === 'find-q') { e.preventDefault(); gotoMatch(find.jumped ? find.cur + (e.shiftKey ? -1 : 1) : Math.max(find.cur, 0)); }
+    if (e.key === 'Enter' && e.target.id === 'find-r') { e.preventDefault(); replaceCurrent(); }
+  });
+  findBar.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    switch (b.id) {
+      case 'find-prev': gotoMatch(find.cur - 1); break;
+      case 'find-next': gotoMatch(find.jumped ? find.cur + 1 : Math.max(find.cur, 0)); break;
+      case 'find-replace': replaceCurrent(); break;
+      case 'find-replace-all': replaceAll(); break;
+      case 'find-close': closeFind(); break;
+    }
+  });
   tocRoot.addEventListener('click', e => {
     const item = e.target.closest('.toc-item');
     if (item) { goToRow(+item.dataset.si, +item.dataset.i); return; }
@@ -302,6 +376,11 @@
     const d = Model.docCounts(doc);
     parts.push(`Workbook: ${fmt(d.rows)} rows, ${fmt(d.words)} words, ${fmt(d.chars)} chars`);
     parts.push(hasFS ? 'direct file access' : 'download mode');
+    if (state.copyHandle && prefs.autosaveCopy.enabled) {
+      const p = n => String(n).padStart(2, '0');
+      const at = state.copyAt ? new Date(state.copyAt) : null;
+      parts.push(state.copyNeedsPermission ? `autosave copy ${state.copyName}: permission needed (save once to grant)` : `autosave copy ${state.copyName}${at ? ` ${p(at.getHours())}:${p(at.getMinutes())}` : ''}`);
+    }
     statusEl.textContent = parts.join('  ·  ');
     $('#doc-title').textContent = docTitle();
     $('#dirty-dot').classList.toggle('on', state.dirty);
@@ -323,7 +402,7 @@
     t.focus();
     holder.classList.remove('focusing');
     const pos = f.caret === 'end' || f.caret == null ? t.value.length : Math.min(f.caret, t.value.length);
-    try { t.setSelectionRange(pos, pos); } catch (e) { /* ignore */ }
+    try { t.setSelectionRange(pos, f.selectLen ? Math.min(pos + f.selectLen, t.value.length) : pos); } catch (e) { /* ignore */ }
     holder.scrollIntoView({ block: f.block || 'nearest' });
   }
   function focusRow(i, col, caret) { state.focus = { i, col: col || state.doc.mainColumn, caret }; applyFocus(); }
@@ -882,6 +961,10 @@
     if (e.ctrlKey && !e.shiftKey && k === 'z') { e.preventDefault(); undo(); return; }
     if ((e.ctrlKey && k === 'y') || (e.ctrlKey && e.shiftKey && k === 'z')) { e.preventDefault(); redo(); return; }
     if (e.ctrlKey && k === 'e') { e.preventDefault(); openExport(); return; }
+    if (e.ctrlKey && !e.shiftKey && k === 'f') { e.preventDefault(); openFind(false); return; }
+    if (e.ctrlKey && !e.shiftKey && k === 'h') { e.preventDefault(); openFind(true); return; }
+    if ((e.key === 'F3' || (e.ctrlKey && k === 'g')) && !findBar.hidden) { e.preventDefault(); gotoMatch(find.jumped ? find.cur + (e.shiftKey ? -1 : 1) : Math.max(find.cur, 0)); return; }
+    if (e.key === 'Escape' && !findBar.hidden && !state.sel.size) { closeFind(); return; }
     if (e.ctrlKey && (e.key === 'PageUp' || e.key === 'PageDown')) {
       e.preventDefault();
       const n = state.doc.sheets.length;
@@ -1010,18 +1093,19 @@
       try {
         const [h] = await window.showOpenFilePicker({ types: FILE_TYPES, multiple: false });
         const f = await h.getFile();
-        await loadBuffer(await f.arrayBuffer(), f.name, h);
+        await loadBuffer(await f.arrayBuffer(), f.name, h, f.lastModified);
       } catch (e) { if (e && e.name !== 'AbortError') alert('Could not open file: ' + e.message); }
     } else {
       $('#file-input').click();
     }
   }
-  async function loadBuffer(buffer, name, handle) {
+  async function loadBuffer(buffer, name, handle, mtime) {
     try {
       const { doc, sources, warnings, hasSettings } = await XlsxIO.load(buffer);
       if (!hasSettings && !doc.settings.title) doc.settings.title = name.replace(/\.xlsx$/i, '').replace(/_/g, ' ').trim();
       loadDoc(doc, name, handle, sources);
-      if (handle) addRecent(name, handle);
+      state.fileMtime = handle ? (mtime || null) : null;
+      if (handle) { addRecent(name, handle); loadCopyHandle(name); }
       if (warnings.length) alert(warnings.join('\n'));
     } catch (e) {
       console.error(e);
@@ -1033,6 +1117,8 @@
     state.si = doc.sheets.findIndex(s => s.kind === 'chapter'); if (state.si < 0) state.si = 0;
     state.dirty = false; state.lastFocus = null; state.readPos = null; state.collapsed.clear(); state.editColumn = null; state.editSheet = null;
     state.sel.clear(); state.selAnchor = null;
+    state.fileMtime = null; state.copyHandle = null; state.copyName = ''; state.copyAt = null; state.copyNeedsPermission = false;
+    closeFind();
     history.undo.length = 0; history.redo.length = 0; typingKey = null;
     applyViewState(doc.settings.view);
     idb.del('autosave').catch(() => {});
@@ -1050,6 +1136,16 @@
     catch (e) { console.error(e); alert('Could not build the workbook: ' + (e.message || e)); return; }
     const blob = new Blob([buf], { type: XlsxIO.MIME });
     try {
+      // Guard against overwriting a file that changed on disk since it was opened (edited in Excel, say).
+      if (hasFS && state.fileHandle && !as && state.fileMtime) {
+        let onDisk = null;
+        try { onDisk = (await state.fileHandle.getFile()).lastModified; } catch (e) { /* file gone: fall through to the picker */ }
+        if (onDisk && onDisk > state.fileMtime + 1500) {
+          const choice = await askConflict(onDisk);
+          if (choice === 'cancel') return;
+          if (choice === 'copy') as = true;
+        }
+      }
       if (hasFS && (as || !state.fileHandle)) {
         const h = await window.showSaveFilePicker({ suggestedName: suggestedName(), types: FILE_TYPES });
         state.fileHandle = h; state.fileName = h.name;
@@ -1057,7 +1153,9 @@
       if (state.fileHandle) {
         const w = await state.fileHandle.createWritable();
         await w.write(blob); await w.close();
+        try { state.fileMtime = (await state.fileHandle.getFile()).lastModified; } catch (e) { /* ignore */ }
         addRecent(state.fileName, state.fileHandle);
+        ensureCopyPermission();
       } else {
         if (as || state.fileName === 'untitled.xlsx') {
           const n = await askText('File name', suggestedName());
@@ -1075,6 +1173,74 @@
       if (confirm('Could not save in place: ' + (e.message || e) + '\nDownload a copy instead?')) download(blob, state.fileName);
     }
   }
+  function askConflict(onDisk) {
+    return new Promise(resolve => {
+      const dlg = $('#dlg-conflict');
+      $('#conflict-text').textContent = `"${state.fileName}" was changed on disk at ${new Date(onDisk).toLocaleString()}, after it was opened here. Saving now would overwrite those changes.`;
+      let done = false;
+      const finish = v => { if (done) return; done = true; dlg.close(); resolve(v); };
+      $('#conflict-overwrite').onclick = () => finish('overwrite');
+      $('#conflict-copy').onclick = () => finish('copy');
+      $('#conflict-cancel').onclick = () => finish('cancel');
+      dlg.onclose = () => finish('cancel');
+      dlg.showModal();
+    });
+  }
+
+  // ---------- autosave copy to a second workbook (Chromium: needs a file handle) ----------
+  const COPY_KEY = 'autosaveCopies';
+  async function loadCopyHandle(name) {
+    state.copyHandle = null; state.copyName = ''; state.copyNeedsPermission = false;
+    if (!hasFS) return;
+    try {
+      const map = (await idb.get(COPY_KEY)) || {};
+      const entry = map[name];
+      if (!entry || !entry.handle) return;
+      state.copyHandle = entry.handle; state.copyName = entry.name;
+      const p = await entry.handle.queryPermission({ mode: 'readwrite' });
+      state.copyNeedsPermission = p !== 'granted';
+      renderStatus();
+    } catch (e) { /* ignore */ }
+  }
+  async function chooseCopyFile() {
+    if (!hasFS) { alert('The autosave copy needs Edge or Chrome (direct file access).'); return; }
+    try {
+      const base = (state.fileName || 'untitled.xlsx').replace(/\.xlsx$/i, '');
+      const h = await window.showSaveFilePicker({ suggestedName: base + '_AUTOSAVE.xlsx', types: FILE_TYPES });
+      state.copyHandle = h; state.copyName = h.name; state.copyNeedsPermission = false; lastCopySnap = '';
+      const map = (await idb.get(COPY_KEY)) || {};
+      map[state.fileName] = { handle: h, name: h.name };
+      await idb.set(COPY_KEY, map);
+      $('#st-copy-name').textContent = h.name;
+      renderStatus();
+    } catch (e) { if (e && e.name !== 'AbortError') alert('Could not choose the autosave file: ' + e.message); }
+  }
+  /** Called from a user gesture (a manual save): re-request write permission for a remembered copy handle. */
+  async function ensureCopyPermission() {
+    if (!state.copyHandle || !state.copyNeedsPermission) return;
+    try { const p = await state.copyHandle.requestPermission({ mode: 'readwrite' }); state.copyNeedsPermission = p !== 'granted'; renderStatus(); } catch (e) { /* ignore */ }
+  }
+  let lastCopyAt = 0, lastCopySnap = '', copyBusy = false;
+  async function autosaveCopyTick() {
+    if (copyBusy || !prefs.autosaveCopy.enabled || !state.copyHandle || state.copyNeedsPermission || !state.dirty) return;
+    if (Date.now() - lastCopyAt < (prefs.autosaveCopy.minutes || 2) * 60000) return;
+    const snap = snapshot();
+    if (snap === lastCopySnap) return;
+    copyBusy = true;
+    try {
+      const p = await state.copyHandle.queryPermission({ mode: 'readwrite' });
+      if (p !== 'granted') { state.copyNeedsPermission = true; renderStatus(); return; }
+      const d = JSON.parse(snap); d.settings.view = currentViewState();
+      const buf = await XlsxIO.save(d, state.sources);
+      const w = await state.copyHandle.createWritable();
+      await w.write(new Blob([buf], { type: XlsxIO.MIME })); await w.close();
+      lastCopyAt = Date.now(); lastCopySnap = snap; state.copyAt = lastCopyAt;
+      renderStatus();
+    } catch (e) { console.warn('autosave copy failed', e); }
+    finally { copyBusy = false; }
+  }
+  setInterval(autosaveCopyTick, 15000);
+
   function download(blob, name) {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob); a.download = name;
@@ -1097,8 +1263,9 @@
   async function recentMenu(anchor) {
     let list = [];
     try { list = (await idb.get('recents')) || []; } catch (e) { /* ignore */ }
-    if (!hasFS) { showMenu(anchor, [{ label: 'Recent files need Edge or Chrome (direct file access).', disabled: true, action() {} }]); return; }
-    if (!list.length) { showMenu(anchor, [{ label: 'No recent files yet. Files you open or save appear here.', disabled: true, action() {} }]); return; }
+    const recover = { label: 'Recover an autosave…', action: () => recoverMenu(anchor) };
+    if (!hasFS) { showMenu(anchor, [{ label: 'Recent files need Edge or Chrome (direct file access).', disabled: true, action() {} }, '-', recover]); return; }
+    if (!list.length) { showMenu(anchor, [{ label: 'No recent files yet. Files you open or save appear here.', disabled: true, action() {} }, '-', recover]); return; }
     showMenu(anchor, list.map(r => ({
       label: r.name, title: new Date(r.at).toLocaleString(),
       action: async () => {
@@ -1115,7 +1282,7 @@
           try { const l = ((await idb.get('recents')) || []).filter(x => x !== r && x.name !== r.name); await idb.set('recents', l); } catch (e2) { /* ignore */ }
         }
       },
-    })).concat(['-', { label: 'Clear list', action: () => idb.del('recents').catch(() => {}) }]));
+    })).concat(['-', { label: 'Recover an autosave…', action: () => recoverMenu(anchor) }, { label: 'Clear list', action: () => idb.del('recents').catch(() => {}) }]));
   }
 
   // ---------- export dialog ----------
@@ -1158,11 +1325,22 @@
       try { await navigator.clipboard.writeText($('#ex-preview').value); $('#ex-copy').textContent = 'Copied ✓'; setTimeout(() => $('#ex-copy').textContent = 'Copy', 1500); }
       catch (e) { $('#ex-preview').select(); document.execCommand('copy'); }
     };
-    $('#ex-download').onclick = () => {
+    const exportName = ext => {
       const base = suggestedName().replace(/\.xlsx$/i, '');
       const col = $('#ex-column').value;
-      const name = (col === state.doc.mainColumn ? base : `${base}-${col}`) + (scopeSel.value === 'all' ? '' : '-' + sheet().name.replace(/[^\w\-]+/g, '_')) + '.md';
-      download(new Blob([$('#ex-preview').value], { type: 'text/markdown;charset=utf-8' }), name);
+      return (col === state.doc.mainColumn ? base : `${base}-${col}`) + (scopeSel.value === 'all' ? '' : '-' + sheet().name.replace(/[^\w\-]+/g, '_')) + ext;
+    };
+    const exportOpts = () => ({
+      column: $('#ex-column').value, scope: scopeSel.value === 'all' ? 'all' : state.si, sheetTitles: $('#ex-titles').checked,
+      numbering: $('#ex-numbering').value || false, indented: $('#ex-indented').value,
+      side: $('#ex-side').value ? { column: $('#ex-side').value, mode: $('#ex-sidemode').value } : null,
+    });
+    $('#ex-download').onclick = () => download(new Blob([$('#ex-preview').value], { type: 'text/markdown;charset=utf-8' }), exportName('.md'));
+    $('#ex-docx').onclick = async () => {
+      const b = $('#ex-docx'); b.disabled = true;
+      try { download(await Docx.build(state.doc, exportOpts()), exportName('.docx')); }
+      catch (e) { console.error(e); alert('Could not build the Word file: ' + (e.message || e)); }
+      finally { b.disabled = false; }
     };
     update();
     dlgExport.showModal();
@@ -1296,6 +1474,11 @@
     $('#st-track-author').checked = !!d.settings.trackAuthor;
     $('#st-track-counts').checked = !!d.settings.trackCounts;
     $('#st-enter').value = prefs.enterMode;
+    $('#st-copy-enabled').checked = !!prefs.autosaveCopy.enabled;
+    $('#st-copy-minutes').value = String(prefs.autosaveCopy.minutes || 2);
+    $('#st-copy-name').textContent = state.copyHandle ? state.copyName + (state.copyNeedsPermission ? ' (permission needed)' : '') : (hasFS ? 'no file chosen' : 'needs Edge or Chrome');
+    $('#st-copy-choose').disabled = !hasFS;
+    $('#st-copy-choose').onclick = () => chooseCopyFile();
     const indSel = $('#st-indent');
     indSel.value = [...indSel.options].some(o => o.value === prefs.indentTrigger) ? prefs.indentTrigger : '   ';
     const sel = $('#st-main'); sel.innerHTML = '';
@@ -1319,7 +1502,9 @@
         countColumns: countSel.length === 1 && countSel[0] === sel.value ? [] : countSel,
         trackUpdated: $('#st-track-updated').checked, trackAuthor: $('#st-track-author').checked, trackCounts: $('#st-track-counts').checked };
       const main = sel.value;
-      prefs.enterMode = $('#st-enter').value; prefs.indentTrigger = indSel.value; savePrefs();
+      prefs.enterMode = $('#st-enter').value; prefs.indentTrigger = indSel.value;
+      prefs.autosaveCopy = { enabled: $('#st-copy-enabled').checked, minutes: parseInt($('#st-copy-minutes').value, 10) || 2 }; savePrefs();
+      if (prefs.autosaveCopy.enabled && !state.copyHandle && hasFS) chooseCopyFile();
       dlg.close();
       mutate(doc => { Object.assign(doc.settings, vals); if (main && main !== doc.mainColumn) Model.setMainColumn(doc, main); Model.ensureMetaColumns(doc); });
     };
@@ -1339,14 +1524,28 @@
     async set(k, v) { const db = await this.open(); return new Promise((res, rej) => { const q = db.transaction('kv', 'readwrite').objectStore('kv').put(v, k); q.onsuccess = () => res(); q.onerror = () => rej(q.error); }); },
     async del(k) { const db = await this.open(); return new Promise((res, rej) => { const q = db.transaction('kv', 'readwrite').objectStore('kv').delete(k); q.onsuccess = () => res(); q.onerror = () => rej(q.error); }); },
   };
-  let lastAutosave = '';
+  let lastAutosave = '', lastHistoryAt = 0;
   setInterval(() => {
     if (!state.dirty) return;
     const snap = snapshot();
     if (snap === lastAutosave) return;
     lastAutosave = snap;
     idb.set('autosave', { doc: state.doc, fileName: state.fileName, at: Date.now() }).catch(() => {});
+    // Keep a short history of snapshots (one every 5 minutes, six kept) for "Recover an autosave…".
+    if (Date.now() - lastHistoryAt > 5 * 60000) {
+      lastHistoryAt = Date.now();
+      idb.get('autosave_history').then(h => idb.set('autosave_history', [{ doc: state.doc, fileName: state.fileName, at: Date.now() }].concat(h || []).slice(0, 6))).catch(() => {});
+    }
   }, 3000);
+  async function recoverMenu(anchor) {
+    let h = [];
+    try { h = (await idb.get('autosave_history')) || []; } catch (e) { /* ignore */ }
+    if (!h.length) { showMenu(anchor, [{ label: 'No autosave snapshots yet (one is kept every 5 minutes while you edit).', disabled: true, action() {} }]); return; }
+    showMenu(anchor, h.map(e => ({
+      label: `${new Date(e.at).toLocaleString()} — ${e.fileName}`,
+      action: () => { if (!confirmDiscard()) return; loadDoc(e.doc, e.fileName, null, new Map()); state.dirty = true; render(); },
+    })));
+  }
   async function offerRestore() {
     try {
       const a = await idb.get('autosave');
