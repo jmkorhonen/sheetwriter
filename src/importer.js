@@ -161,6 +161,91 @@ const Importer = (() => {
     return { rows, columns: [...columns], settings, warnings, stats, info };
   }
 
-  return { parse, analyze, splitSentences, joinSoft, stripFrontMatter };
+  // ---- CSV / TSV ----
+  /** RFC 4180-style parse: quoted fields, "" escapes, newlines inside quotes. Blank lines are dropped. */
+  function parseCsv(text, delim) {
+    delim = delim || detectDelimiter(text);
+    const rows = []; let row = [], field = '', q = false;
+    text = String(text).replace(/^\ufeff/, '');
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (q) { if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else q = false; } else field += c; }
+      else if (c === '"' && field === '') q = true;
+      else if (c === delim) { row.push(field); field = ''; }
+      else if (c === '\n' || c === '\r') { if (c === '\r' && text[i + 1] === '\n') i++; row.push(field); rows.push(row); row = []; field = ''; }
+      else field += c;
+    }
+    if (field !== '' || row.length) { row.push(field); rows.push(row); }
+    return rows.filter(r => r.some(c => c.trim()));
+  }
+  /** The delimiter (comma, semicolon or tab) that appears most consistently on the first lines. */
+  function detectDelimiter(text) {
+    const lines = String(text).split(/\r?\n/).filter(l => l.trim()).slice(0, 8);
+    let best = ',', bestScore = -1;
+    for (const d of [',', ';', '\t']) {
+      const counts = lines.map(l => l.replace(/"[^"]*"/g, '').split(d).length - 1);
+      if (!counts.length || counts[0] === 0) continue;
+      const same = counts.filter(c => c === counts[0]).length;
+      const score = same * 10 + counts[0];
+      if (score > bestScore) { bestScore = score; best = d; }
+    }
+    return best;
+  }
+  /** Is this text a delimited table rather than Markdown? A .csv/.tsv name settles it; otherwise every line must carry the same number of delimiters. */
+  function looksCsv(text, fileName) {
+    if (/\.(csv|tsv)$/i.test(fileName || '')) return true;
+    if (/\.(md|markdown|txt)$/i.test(fileName || '')) return false;
+    const lines = String(text).split(/\r?\n/).filter(l => l.trim()).slice(0, 12);
+    if (lines.length < 2) return false;
+    const d = detectDelimiter(text);
+    const counts = lines.map(l => l.replace(/"[^"]*"/g, '').split(d).length - 1);
+    return counts[0] >= 1 && counts.every(c => c === counts[0]) && !lines.some(l => /^#{1,6} /.test(l));
+  }
+  const looksNumeric = s => /^\s*-?\d+([.,]\d+)?\s*%?\s*$/.test(s);
+  /** A delimited table → importer rows. The first line is the header when it looks like one; the text comes from a
+   *  column named text (or the main column), else from the longest column; kind/indent columns are honoured;
+   *  every other column becomes a side column. */
+  function fromCsv(text, opts = {}) {
+    const table = parseCsv(text);
+    const warnings = [];
+    if (!table.length) return { rows: [], columns: [], settings: {}, warnings, stats: { rows: 0, headings: 0 }, main: '' };
+    const width = Math.max(...table.map(r => r.length));
+    const first = table[0].map(c => c.trim());
+    // A header spans every column, is short, non-numeric and unique; a one-column table needs a name-like first cell ("text", not a sentence).
+    const hasHeader = table.length > 1 && first.length === width && first.every(c => c && c.length <= 40 && !looksNumeric(c) && !c.includes('\n'))
+      && new Set(first.map(c => c.toLowerCase())).size === first.length && (width > 1 || (/^[\w .-]{1,20}$/.test(first[0]) && !/[.!?]$/.test(first[0])));
+    const headers = Array.from({ length: width }, (_, i) => (hasHeader && first[i]) ? first[i] : 'col' + (i + 1));
+    const data = hasHeader ? table.slice(1) : table;
+    const norm = headers.map(h => h.toLowerCase().replace(/^\./, ''));
+    const idx = name => norm.indexOf(name);
+    const kindCol = idx('kind'), indentCol = idx('indent'), skip = new Set([kindCol, indentCol, idx('no'), idx('id'), idx('words'), idx('chars'), idx('updated'), idx('author')].filter(i => i >= 0));
+    let mainCol = idx((opts.mainColumn || 'text').toLowerCase());
+    if (mainCol < 0) mainCol = idx('text');
+    if (mainCol < 0) {
+      let best = -1, bestLen = -1;
+      for (let i = 0; i < width; i++) {
+        if (skip.has(i)) continue;
+        const vals = data.map(r => (r[i] || '').trim()).filter(Boolean);
+        const avg = vals.length ? vals.reduce((a, v) => a + v.length, 0) / vals.length : 0;
+        if (avg > bestLen) { bestLen = avg; best = i; }
+      }
+      mainCol = best;
+      if (width > 1 && hasHeader) warnings.push(`No "text" column: using "${headers[mainCol]}" as the text.`);
+    }
+    const rows = []; let headings = 0;
+    for (const r of data) {
+      const kind = kindCol >= 0 ? Model.normKind(r[kindCol]) : 'p';
+      const ind = indentCol >= 0 ? parseInt(r[indentCol], 10) || 0 : 0;
+      const side = {};
+      headers.forEach((h, i) => { if (i !== mainCol && !skip.has(i) && String(r[i] || '').trim()) side[h] = String(r[i]).trim(); });
+      const t = String(r[mainCol] || '').trim();
+      if (!t && !Object.keys(side).length) continue;
+      if (Model.isHeading(kind)) headings++;
+      rows.push({ kind, indent: Model.isHeading(kind) ? 0 : ind, text: t, side });
+    }
+    return { rows, columns: headers, settings: {}, warnings, stats: { rows: rows.length, headings }, main: headers[mainCol] || '', hasHeader };
+  }
+
+  return { parse, analyze, splitSentences, joinSoft, stripFrontMatter, parseCsv, detectDelimiter, looksCsv, fromCsv };
 })();
 if (typeof module !== 'undefined') module.exports = Importer;

@@ -1487,6 +1487,15 @@
       catch (e) { console.error(e); alert('Could not build the Word file: ' + (e.message || e)); }
       finally { b.disabled = false; }
     };
+    $('#ex-print').onclick = () => {
+      // Read view with the dialog's options, then the browser's print dialog (Save as PDF lives there).
+      const o = exportOpts();
+      state.readScope = o.scope === 'all' ? 'all' : 'sheet'; state.readNumbering = o.numbering || ''; state.readIndented = o.indented;
+      state.readColumn = o.column === state.doc.mainColumn ? null : o.column;
+      dlgExport.close();
+      if (state.view !== 'read') switchView('read'); else render();
+      setTimeout(() => window.print(), 250);
+    };
     $('#ex-odt').onclick = async () => {
       const b = $('#ex-odt'); b.disabled = true;
       try { download(await Odf.buildOdt(state.doc, exportOpts()), exportName('.odt')); }
@@ -1501,6 +1510,12 @@
   const dlgImport = $('#dlg-import');
   let importExtra = []; // further files chosen at once, each imported as its own sheet
   const importOpts = () => ({ granularity: $('#im-gran').value, stripNumbers: $('#im-strip').checked });
+  /** Parse whatever is in the import box: a delimited table (CSV/TSV) or Markdown. The Markdown-only options hide for tables. */
+  function parseImport(text, fileName) {
+    const csv = Importer.looksCsv(text, fileName);
+    $('#im-gran').parentElement.hidden = csv; $('#im-strip').parentElement.hidden = csv;
+    return csv ? Importer.fromCsv(text, { mainColumn: state.doc.mainColumn }) : Importer.parse(text, importOpts());
+  }
   function openImport(text, fileName) {
     importExtra = [];
     $('#im-dest').value = 'new';
@@ -1516,8 +1531,9 @@
     $('#im-gran').value = info.semanticLines ? 'lines' : 'paragraphs';
     $('#im-strip').checked = info.numbered;
     const notes = [];
-    if (info.semanticLines) notes.push('Looks like one sentence per line: importing lines as rows.');
-    if (info.numbered) notes.push('Headings carry section numbers: stripping them.');
+    if (Importer.looksCsv(text, fileName)) { const c = Importer.fromCsv(text, { mainColumn: state.doc.mainColumn }); notes.push(`Delimited table: ${c.columns.length} column${c.columns.length === 1 ? '' : 's'}${c.hasHeader ? ' (' + c.columns.join(', ') + ')' : ', no header row'}; "${c.main}" becomes the text, the other columns side columns.`); }
+    else { if (info.semanticLines) notes.push('Looks like one sentence per line: importing lines as rows.');
+    if (info.numbered) notes.push('Headings carry section numbers: stripping them.'); }
     $('#im-detect').textContent = notes.join(' ');
     const base = (fileName || '').replace(/\.[^.]+$/, '').replace(/_/g, ' ').trim();
     $('#im-name').value = info.title || base || 'Imported';
@@ -1529,7 +1545,7 @@
     const dest = $('#im-dest').value;
     $('#im-name').parentElement.style.visibility = dest === 'new' || dest === 'split' ? 'visible' : 'hidden';
     if (!text.trim()) { box.innerHTML = '<p class="muted im-empty">Paste Markdown above, choose a file, or drop a .md file on the window.</p>'; $('#im-info').textContent = ''; $('#im-go').disabled = true; return; }
-    const res = Importer.parse(text, importOpts());
+    const res = parseImport(text, $('#im-file').textContent);
     const table = Views.el('table', {});
     res.rows.slice(0, 300).forEach(r => {
       const side = Object.entries(r.side || {}).map(([k, v]) => `${k}: ${v}`).join(' · ');
@@ -1567,7 +1583,7 @@
   };
   async function importFromFiles(files) {
     const first = files[0];
-    importExtra = await Promise.all(files.slice(1).map(async f => ({ name: f.name.replace(/\.[^.]+$/, '').replace(/_/g, ' '), text: await f.text() })));
+    importExtra = await Promise.all(files.slice(1).map(async f => ({ name: f.name.replace(/\.[^.]+$/, '').replace(/_/g, ' '), file: f.name, text: await f.text() })));
     loadImportText(await first.text(), first.name);
     if (!dlgImport.open) dlgImport.showModal();
   }
@@ -1575,7 +1591,7 @@
     const text = $('#im-text').value;
     if (!text.trim()) return;
     const opts = importOpts();
-    const res = Importer.parse(text, opts);
+    const res = parseImport(text, $('#im-file').textContent);
     const dest = $('#im-dest').value;
     const name = $('#im-name').value.trim() || 'Imported';
     const extra = importExtra.slice();
@@ -1601,7 +1617,7 @@
       }
       let at = state.si;
       for (const f of extra) {
-        const r2 = Importer.parse(f.text, opts);
+        const r2 = Importer.looksCsv(f.text, f.file) ? Importer.fromCsv(f.text, { mainColumn: d.mainColumn }) : Importer.parse(f.text, opts);
         at = Model.addSheet(d, f.name.slice(0, 31) || 'Imported', at + 1);
         Model.importRows(d, at, r2.rows, { replace: true });
       }
@@ -1618,7 +1634,7 @@
     const files = [...e.dataTransfer.files];
     const x = files.find(f => /\.(xlsx|ods)$/i.test(f.name));
     if (x) { if (!confirmDiscard()) return; await loadBuffer(await x.arrayBuffer(), x.name, null); return; }
-    const mds = files.filter(f => /\.(md|markdown|txt)$/i.test(f.name));
+    const mds = files.filter(f => /\.(md|markdown|txt|csv|tsv)$/i.test(f.name));
     if (mds.length) await importFromFiles(mds);
   });
 

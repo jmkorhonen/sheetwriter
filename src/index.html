@@ -36,8 +36,8 @@
     <button id="btn-expand" title="Expand everything (Draft view)">Expand all</button>
   </div>
   <div class="group">
-    <button id="btn-export" title="Export as Markdown or Word (Ctrl+E)">Export</button>
-    <button id="btn-import" title="Import Markdown or rich text (or drop a .md file on the window)">Import</button>
+    <button id="btn-export" title="Export as Markdown, Word or OpenDocument, or print (Ctrl+E)">Export</button>
+    <button id="btn-import" title="Import Markdown, rich text or CSV (or drop a .md or .csv file on the window)">Import</button>
     <button id="btn-settings" title="Title, author, main column, numbering, editor preferences">Settings</button>
     <button id="btn-help" title="Keyboard shortcuts and conventions (F1)">?</button>
   </div>
@@ -96,6 +96,7 @@
       <button type="button" id="ex-download" class="primary">Download Markdown (.md)</button>
       <button type="button" id="ex-docx" class="primary" title="Word document with heading styles, formatting from the Markdown, indented rows and side notes">Download Word (.docx)</button>
       <button type="button" id="ex-odt" class="primary" title="OpenDocument text (LibreOffice) with the same content and styles">Download OpenDocument (.odt)</button>
+      <button type="button" id="ex-print" title="Open the Read view with these options and print it; choose Save as PDF in the print dialog">Print / PDF</button>
       <button type="button" data-close>Close</button>
     </div>
   </form>
@@ -103,9 +104,9 @@
 
 <dialog id="dlg-import">
   <form method="dialog" class="dlg">
-    <h2>Import Markdown</h2>
+    <h2>Import Markdown or CSV</h2>
     <div class="fields">
-      <label class="wide">Markdown <textarea id="im-text" spellcheck="false" placeholder="Paste Markdown here, choose a file, or drop a .md file anywhere on the window."></textarea></label>
+      <label class="wide">Markdown or CSV <textarea id="im-text" spellcheck="false" placeholder="Paste Markdown or a delimited table here, choose a file, or drop a .md or .csv file anywhere on the window."></textarea></label>
       <div class="wide about"><button type="button" class="small" id="im-choose">Choose file…</button><span id="im-file"></span><span id="im-detect"></span></div>
       <label>Rows from <select id="im-gran"><option value="paragraphs">paragraphs (one paragraph per row)</option><option value="sentences">sentences (first sentence p, the rest s)</option><option value="lines">lines (one line per row)</option></select></label>
       <label>Into <select id="im-dest"><option value="new">a new sheet</option><option value="split">one sheet per h1 heading</option><option value="append">the end of this sheet</option><option value="replace">this sheet, replacing its rows</option></select></label>
@@ -113,7 +114,7 @@
       <label class="chk"><input type="checkbox" id="im-strip"> <span>Strip leading section numbers such as <code>1.2.1</code> from headings and paragraphs</span></label>
     </div>
     <div id="im-preview" class="im-preview"></div>
-    <p class="muted" style="font-size:12px;margin:6px 0 0">Headings become h1–h4 rows, list items become indented rows, <code>&gt; **notes:** …</code> blockquotes and <code>&lt;!-- notes: … --&gt;</code> comments fill side columns of the row above, other comments become x rows. Front matter title, author and description fill empty settings.</p>
+    <p class="muted" style="font-size:12px;margin:6px 0 0">Headings become h1–h4 rows, list items become indented rows, <code>&gt; **notes:** …</code> blockquotes and <code>&lt;!-- notes: … --&gt;</code> comments fill side columns of the row above, other comments become x rows. Front matter title, author and description fill empty settings. A CSV or TSV table imports one row per line: the <code>text</code> column (or the longest one) becomes the text, <code>kind</code> and <code>indent</code> columns are honoured, the rest become side columns.</p>
     <div class="actions">
       <span id="im-info" class="muted"></span>
       <button type="button" data-close>Cancel</button>
@@ -237,7 +238,7 @@
       <tr><td>Ctrl+PageUp / PageDown</td><td>Previous / next sheet</td></tr>
     </table>
     <h3>Markdown import</h3>
-    <p>The Import button, or drop a .md file on the window. One paragraph per row by default; files written one sentence per line are detected and imported line by line; a sentence mode splits paragraphs into p and s rows. Lists become indented rows, and the side-column blockquotes and comments that Export writes are read back into their columns, so export and import round-trip. Import into a new sheet, one sheet per h1, or the current sheet. Several files at once become several sheets.</p>
+    <p>The Import button, or drop a .md or .csv file on the window. A CSV or TSV table gives one row per line, with its text column (or the longest column) as the text and the other columns as side columns. For Markdown: one paragraph per row by default; files written one sentence per line are detected and imported line by line; a sentence mode splits paragraphs into p and s rows. Lists become indented rows, and the side-column blockquotes and comments that Export writes are read back into their columns, so export and import round-trip. Import into a new sheet, one sheet per h1, or the current sheet. Several files at once become several sheets.</p>
     <h3>Table of contents</h3>
     <p>The Contents button opens a pane listing the headings of this sheet or of all sheets, with numbers and section word counts. Click a heading to jump to it in Draft, Grid or Read view; collapsed sections open on the way. The heading you are working under is highlighted. The pane is also an outliner: drag a heading to move its whole section above or below another heading, or onto a sheet name to move it to that sheet; the ◂ ▸ buttons that appear on hover promote or demote a section together with its sub-headings; on a focused entry, Alt+↑/↓ moves the section past a sibling and Alt+Shift+←/→ promotes or demotes it.</p>
     <h3>Status, targets, filter</h3>
@@ -254,7 +255,7 @@
 </dialog>
 
 <input type="file" id="file-input" accept=".xlsx,.ods" hidden>
-<input type="file" id="md-input" accept=".md,.markdown,.txt,text/markdown,text/plain" multiple hidden>
+<input type="file" id="md-input" accept=".md,.markdown,.txt,.csv,.tsv,text/markdown,text/plain,text/csv" multiple hidden>
 
 <script src="timers.js"></script>
 <script src="../vendor/exceljs.min.js"></script>

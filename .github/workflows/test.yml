@@ -14,9 +14,13 @@ jobs:
         with:
           node-version: 20
       - run: npm install --no-audit --no-fund
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps chromium firefox webkit
       - name: Browser tests (headless Chromium)
         run: npm test
+      - name: Browser tests (headless Firefox)
+        run: node tests/run.js --browser=firefox
+      - name: Browser tests (headless WebKit)
+        run: node tests/run.js --browser=webkit
       - name: Built file in docs/ matches the sources
         run: |
           python3 build.py

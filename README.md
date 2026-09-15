@@ -74,9 +74,10 @@ Press `?` in the toolbar or F1 for the full list.
 - **Columns ▾** chooses which side columns and counts the Draft view shows. This display state, with the current view, sheet, row and table of contents, is saved in the workbook and restored when the file is opened again. Click the title in the toolbar to change it.
 - **Read**: the text as flowing prose, with numbering none / headings / all and indented rows as paragraphs or nested lists.
 - **Contents**: a pane listing the headings of this sheet or of all sheets, with numbers and section word counts. Click to jump; the heading you are working under is highlighted. The pane is also an outliner: drag a heading to move its whole section, above or below another heading or onto a sheet name to move it to that sheet; the ◂ ▸ buttons promote or demote a section with its sub-headings; on a focused entry, Alt+↑/↓ moves the section past a sibling and Alt+Shift+←/→ promotes or demotes it.
-- **Import** (toolbar button, or drop a `.md` file on the window): headings become h1–h4 rows, paragraphs become rows (or sentences, or lines for files written one sentence per line, which are detected), list items become indented rows, and the side-column blockquotes and comments that Export writes are read back into their columns. Into a new sheet, one sheet per h1, or the current sheet, with a preview first.
+- **Import** (toolbar button, or drop a `.md` or `.csv` file on the window): a CSV or TSV table gives one row per line, its `text` column (or the longest column) as the text, `kind` and `indent` honoured, other columns as side columns. For Markdown, headings become h1–h4 rows, paragraphs become rows (or sentences, or lines for files written one sentence per line, which are detected), list items become indented rows, and the side-column blockquotes and comments that Export writes are read back into their columns. Into a new sheet, one sheet per h1, or the current sheet, with a preview first.
 - **Find and replace** (Ctrl+F, Ctrl+H): across all sheets and columns or narrowed down, with match case; F3 steps through matches, Replace all is one undo step.
 - **OpenDocument**: save the workbook as `.ods` (choose the extension in Save as) for LibreOffice, with the same sheets, settings sheet, contents sheet and header protection; `.ods` files open too. Export the text as `.odt` from the Export dialog. Limits: data-sheet formatting is carried through only for `.xlsx`, and `.ods` has no frozen panes.
+- **Print / PDF** (Export dialog): opens the Read view with the chosen column, scope and numbering and calls the browser's print dialog, where Save as PDF lives. Top-level headings start a new page.
 - **Export Word** (Export button or Ctrl+E, then "Download Word"): real heading styles, bold, italic, code and links from the Markdown, indented rows, side columns as small notes. Written by a small built-in OOXML writer, no Word needed.
 - **Safety**: saving warns if the file changed on disk since it was opened; a snapshot is kept in the browser every 5 minutes (Recent ▾ → Recover an autosave…); and Settings can write an autosave copy to a second workbook such as `name_AUTOSAVE.xlsx` at an interval (Edge and Chrome).
 - **Status and targets**: the column given the status role shows coloured chips on cards and tints Grid cells; the target column's number on a heading row sets a word target for that section, and Settings holds one for the workbook. The Filter button hides rows by text or `column:value` in Draft and Grid.
@@ -96,6 +97,7 @@ docs/          the built app, served by GitHub Pages
 tests.html     browser test page; tests/run.js runs it headlessly (npm test)
 .github/       CI: tests in headless Chromium, and docs/ must match the sources
 PLAN.md        design notes and status
+CHANGELOG.md   one line per release
 ```
 
 Build:
@@ -110,11 +112,18 @@ Run the tests in a browser: start a static server in this folder, for example `p
 npm install && npx playwright install chromium && npm test
 ```
 
+The same tests in Firefox or WebKit (Safari's engine), after `npx playwright install firefox webkit`:
+
+```bash
+node tests/run.js --browser=firefox
+```
+
 Release checklist:
 
 1. Bump `version` in `src/version.js`.
 2. If the file format, a system column, or what is safe to edit in Excel changed: revise `excelNotes()` in `src/xlsxio.js` (the instructions written into every workbook), the help dialog in `src/index.html`, and the "Editing in Excel" section above. A test fails if a system column is missing from the notes.
-3. `python build.py`, `npm test`, commit, push `main`, then push the tag (`git tag -a vX.Y.Z`). GitHub Pages deploys from `docs/`; CI reruns the tests and checks that `docs/` matches the sources.
+3. Add a line to `CHANGELOG.md`.
+4. `python build.py`, `npm test`, commit, push `main`, then push the tag (`git tag -a vX.Y.Z`). GitHub Pages deploys from `docs/`; CI reruns the tests and checks that `docs/` matches the sources.
 
 Notes for contributors:
 
@@ -124,7 +133,7 @@ Notes for contributors:
 
 ## Browser support
 
-Edge and Chrome (Chromium 86+): full, including in-place saving and Recent files. Firefox 98+ and Safari 15.4+: editing, import and export work; saving downloads a copy, and Recent files are unavailable because those browsers have no File System Access API. Not tested on mobile.
+Edge and Chrome (Chromium 86+): full, including in-place saving and Recent files. Firefox 98+ and Safari 15.4+: editing, import and export work; saving downloads a copy, and Recent files are unavailable because those browsers have no File System Access API. The test suite runs green in Chromium, Firefox and WebKit through Playwright, and CI runs all three. Small screens get a tighter toolbar; touch editing has had no real testing.
 
 ## License
 

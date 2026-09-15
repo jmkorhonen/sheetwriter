@@ -1,8 +1,10 @@
-/* Runs tests.html in headless Chromium and exits non-zero on failure. Used by `npm test` and CI. */
+/* Runs tests.html in a headless browser and exits non-zero on failure. Used by `npm test` and CI.
+ * Chromium by default; `node tests/run.js --browser=firefox` or `--browser=webkit` after `npx playwright install firefox webkit`. */
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { chromium } = require('playwright');
+const playwright = require('playwright');
+const engine = (process.argv.find(a => a.startsWith('--browser=')) || '--browser=chromium').slice(10);
 
 const root = path.resolve(__dirname, '..');
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css', '.svg': 'image/svg+xml' };
@@ -18,7 +20,8 @@ const server = http.createServer((req, res) => {
 (async () => {
   await new Promise(r => server.listen(0, '127.0.0.1', r));
   const port = server.address().port;
-  const browser = await chromium.launch();
+  const browser = await playwright[engine].launch();
+  console.log('browser:', engine, browser.version());
   const page = await browser.newPage();
   page.on('pageerror', e => console.error('page error:', e.message));
   await page.goto(`http://127.0.0.1:${port}/tests.html`);

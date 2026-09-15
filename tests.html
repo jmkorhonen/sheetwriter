@@ -528,6 +528,25 @@ test('ods: repeated rows and columns, multi-line cells, numbers and links', asyn
   eq(doc.sheets[0].rows[0].x, '[Link](https://a.b)'); eq(doc.sheets[0].rows[0].x_2, 'a   b');
 });
 
+// ---- csv ----
+test('import: CSV parsing, delimiter detection, header and text-column detection, kind/indent, side columns', () => {
+  eq(Importer.parseCsv('a,b\n"x, y","say ""hi"""\n\n1,"two\nlines"\n'), [['a', 'b'], ['x, y', 'say "hi"'], ['1', 'two\nlines']]);
+  eq(Importer.detectDelimiter('a;b;c\n1;2;3'), ';'); eq(Importer.detectDelimiter('a\tb\n1\t2'), '\t'); eq(Importer.detectDelimiter('a,b\n1,2'), ',');
+  ok(Importer.looksCsv('x', 'rows.csv') && !Importer.looksCsv('a,b\n1,2', 'notes.md'), 'file name decides');
+  ok(Importer.looksCsv('kind,text,notes\nh1,Title,\np,First claim,check\n'), 'consistent delimiters');
+  ok(!Importer.looksCsv('# Heading\n\nA paragraph, with a comma.\n'), 'markdown is not a table');
+  const r = Importer.fromCsv('kind;indent;text;notes;sources\nh1;;Why rows;;\np;;First claim;check;Smith 2020\np;1;Sub point;;\n');
+  eq(r.hasHeader, true); eq(r.main, 'text'); eq(r.columns, ['kind', 'indent', 'text', 'notes', 'sources']);
+  eq(r.rows, [{ kind: 'h1', indent: 0, text: 'Why rows', side: {} }, { kind: 'p', indent: 0, text: 'First claim', side: { notes: 'check', sources: 'Smith 2020' } }, { kind: 'p', indent: 1, text: 'Sub point', side: {} }]);
+  const r2 = Importer.fromCsv('id,Argument,Src\n1,A long first argument about rows,S1\n2,Second one,S2\n');
+  eq(r2.main, 'Argument'); eq(r2.rows.map(x => x.text), ['A long first argument about rows', 'Second one']); eq(r2.rows[0].side, { Src: 'S1' }); ok(r2.warnings[0].includes('Argument'), 'warned about the guess');
+  const r3 = Importer.fromCsv('Just a sentence.\nAnother sentence, with comma.\n');
+  eq(r3.hasHeader, false); eq(r3.rows.length, 2);
+  const doc = Model.newDoc(); Model.importRows(doc, 0, r.rows, { replace: true });
+  eq(doc.sheets[0].rows.map(x => [x['.kind'], x['.indent'], x.text, x.notes]), [['h1', '', 'Why rows', ''], ['p', '', 'First claim', 'check'], ['p', '1', 'Sub point', '']]);
+  ok(doc.sheets[0].columns.includes('sources'), 'side column created');
+});
+
 // ---- markdown ----
 test('md: raw html is escaped, links restricted, lists render', () => {
   const tag = '<scr' + 'ipt>';

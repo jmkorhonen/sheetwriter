@@ -347,4 +347,15 @@ table.grid td.status.c4 { background: var(--c4); } table.grid td.status.c5 { bac
   article.read { border: none; box-shadow: none; max-width: none; padding: 0; font-size: 12pt; }
   article.read .rblock[data-i] { margin: 0; padding: 0; }
   .card { border: none; box-shadow: none; page-break-inside: avoid; }
+  article.read h1:not(:first-child) { break-before: page; page-break-before: always; }
+  article.read h1, article.read h2, article.read h3 { break-after: avoid; page-break-after: avoid; }
+  @page { margin: 2cm; }
+}
+/* Small screens: a tighter toolbar; rarely needed buttons go, everything else wraps. */
+@media (max-width: 640px) {
+  #toolbar { gap: 6px; padding: 4px 6px; }
+  #toolbar button { padding: 3px 6px; font-size: 12.5px; }
+  #toolbar #btn-recent, #toolbar #btn-saveas, #toolbar #btn-collapse, #toolbar #btn-expand { display: none; }
+  #doc-title { max-width: 55vw; }
+  #status { font-size: 11px; }
 }
