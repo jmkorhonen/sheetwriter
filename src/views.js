@@ -56,17 +56,26 @@ const Views = (() => {
       const rc = Model.rowCounts(doc, sheet, row);
       parts.push(`${fmt(rc.words)} w · ${fmt(rc.chars)} c`);
       const sec = sections[i];
-      if (sec) parts.push(`section ${fmt(sec.words)} w · ${fmt(sec.chars)} c · ${sec.rows} rows`);
+      const target = Model.rowTarget(sheet, row);
+      if (sec) parts.push(`section ${fmt(sec.words)}${target ? ` / ${fmt(target)}` : ''} w${target ? ` (${Math.round(100 * sec.words / target)} %)` : ''} · ${fmt(sec.chars)} c · ${sec.rows} rows`);
+      else if (target) parts.push(`target ${fmt(target)} w (${Math.round(100 * rc.words / target)} %)`);
     }
     if (doc.settings.trackUpdated && row.updated) parts.push(row.updated);
     if (doc.settings.trackAuthor && row.author) parts.push(row.author);
     return parts.join(' '); // em spaces: ordinary spaces would collapse to one
   }
-  function setMeta(card, text) {
+  function statusChip(doc, sheet, row) {
+    const sc = Model.statusColumn(doc, sheet);
+    const v = sc ? String(row[sc] || '').trim() : '';
+    return v ? el('span', { class: 'chip c' + Model.colorIndex(v), title: sc }, v) : null;
+  }
+  function setMeta(card, text, chip) {
     let m = card.querySelector('.meta');
-    if (!text) { if (m) m.remove(); return; }
+    if (!text && !chip) { if (m) m.remove(); return; }
     if (!m) { m = el('div', { class: 'meta' }); card.querySelector('.body').appendChild(m); }
-    m.textContent = text;
+    m.innerHTML = '';
+    m.appendChild(chip || el('span', {}));
+    m.appendChild(el('span', { class: 'meta-text' }, text));
   }
   /** Recompute every card's meta line (section totals change when any row changes). */
   function refreshMeta(root, ctx) {
@@ -75,8 +84,45 @@ const Views = (() => {
     const sections = Model.sectionCounts(ctx.doc, sheet);
     root.querySelectorAll('.card').forEach(c => {
       const i = +c.dataset.i; const row = sheet.rows[i];
-      if (row) setMeta(c, metaLine(ctx, sheet, row, i, sections));
+      if (row) setMeta(c, metaLine(ctx, sheet, row, i, sections), statusChip(ctx.doc, sheet, row));
     });
+  }
+  /** Filter box shared by Draft and Grid. Query: plain text, or column:value (kind:h2, status:todo). */
+  function filterBar(ctx) {
+    return el('div', { class: 'filterbar' },
+      el('input', { type: 'search', id: 'row-filter', placeholder: 'Filter rows… text, or column:value (status:todo, kind:h2)', value: ctx.rowFilter || '', spellcheck: 'false' }),
+      el('span', { id: 'row-filter-info', class: 'muted' }, ''));
+  }
+  /** Hide rows (cards or grid rows) that do not match the filter. */
+  function applyRowFilter(root, ctx) {
+    const q = String(ctx.rowFilter || '').trim();
+    const sheet = ctx.doc.sheets[ctx.si];
+    if (!sheet || sheet.kind !== 'chapter') return;
+    const holders = root.querySelectorAll('.card[data-i], tbody tr[data-i]');
+    const num = q ? Model.numbering(ctx.doc, ctx.si).numbers : null;
+    let col = null, needle = q.toLowerCase();
+    const m = /^([^\s:]+):(.*)$/.exec(q);
+    if (m) {
+      const name = m[1].toLowerCase();
+      col = name === 'kind' || name === 'no' ? name : sheet.columns.find(c => c.toLowerCase() === name) || null;
+      if (col) needle = m[2].trim().toLowerCase();
+    }
+    const gridHidden = ctx.gridHidden || new Set();
+    const cols = sheet.columns.filter(c => c !== 'no' && !gridHidden.has(c));
+    let shown = 0, all = 0;
+    holders.forEach(h => {
+      all++;
+      const i = +h.dataset.i, row = sheet.rows[i];
+      let hit = true;
+      if (q && col === 'no') hit = num[i].startsWith(needle);
+      else if (q && col === 'kind') hit = Model.normKind(row.kind) === needle || (needle === 'h' && Model.isHeading(row.kind));
+      else if (q && col) hit = String(row[col] || '').toLowerCase().includes(needle);
+      else if (q) hit = num[i].startsWith(needle) || cols.some(c => String(row[c] || '').toLowerCase().includes(needle));
+      h.classList.toggle('filtered', !hit);
+      if (hit) shown++;
+    });
+    const info = root.querySelector('#row-filter-info');
+    if (info) info.textContent = q ? `${shown} of ${all} rows` : '';
   }
 
   // ---------- Draft ----------
@@ -92,8 +138,10 @@ const Views = (() => {
     const list = el('div', { class: 'cards' + (side.length ? ' has-side' : '') });
     const sections = Model.sectionCounts(doc, sheet);
     for (const i of visibleIndexes(sheet, ctx.collapsed)) list.appendChild(card(ctx, sheet, sheet.rows[i], i, num, side, sections));
+    if (ctx.rowFilter || ctx.showFilter) root.appendChild(filterBar(ctx));
     root.appendChild(list);
     autosizeAll(root);
+    applyRowFilter(root, ctx);
   }
 
   function card(ctx, sheet, row, i, num, side, sections) {
@@ -120,9 +168,8 @@ const Views = (() => {
     const body = el('div', { class: 'body' }, mainWrap);
     if (indent) body.style.paddingLeft = (indent * 26) + 'px';
     if (collapsed) body.appendChild(el('button', { class: 'pill', type: 'button', title: 'Expand' }, `▸ ${hidden} hidden row${hidden === 1 ? '' : 's'}`));
-    const meta = metaLine(ctx, sheet, row, i, sections);
-    if (meta) body.appendChild(el('div', { class: 'meta' }, meta));
     c.append(gutter, body);
+    setMeta(c, metaLine(ctx, sheet, row, i, sections), statusChip(ctx.doc, sheet, row));
     if (side.length) {
       const sd = el('div', { class: 'side' });
       for (const col of side) {
@@ -151,7 +198,7 @@ const Views = (() => {
     });
     // own section only; other cards' totals are refreshed by refreshMeta when the row is left
     const sections = []; sections[i] = Model.sectionCounts(doc, sheet)[i];
-    setMeta(c, metaLine(ctx, sheet, row, i, sections));
+    setMeta(c, metaLine(ctx, sheet, row, i, sections), statusChip(doc, sheet, row));
   }
 
   function dataSheetTable(sheet, ctx) {
@@ -183,11 +230,8 @@ const Views = (() => {
     const gridHidden = ctx.gridHidden || new Set();
     const columns = sheet.columns.filter(c => c === 'no' || c === doc.mainColumn || !gridHidden.has(c));
     const hiddenCount = sheet.columns.length - columns.length;
-    // Filter box above the table
-    const bar = el('div', { class: 'gridbar' },
-      el('input', { type: 'search', id: 'grid-filter', placeholder: 'Filter rows (any visible column)…', value: ctx.gridFilter || '', spellcheck: 'false' }),
-      el('span', { id: 'grid-filter-info', class: 'muted' }, ''));
-    root.appendChild(bar);
+    root.appendChild(filterBar(ctx));
+    const statusCol = Model.statusColumn(doc, sheet);
     const table = el('table', { class: 'grid' });
     // Fixed layout with explicit widths so columns can be resized; the table is as wide as its columns.
     const cg = el('colgroup', {});
@@ -257,7 +301,8 @@ const Views = (() => {
         if (Model.isComputed(doc, col)) { const rc = Model.rowCounts(doc, sheet, row); tr.appendChild(el('td', { class: 'meta num' }, fmt(col === 'words' ? rc.words : rc.chars))); continue; }
         const t = el('textarea', { class: 'cell' + (col === doc.mainColumn ? ' main' : ''), 'data-col': col, rows: '1' });
         t.value = row[col] || '';
-        const td = el('td', { class: col === doc.mainColumn ? 'main' : '' }, t);
+        const chipClass = col === statusCol && String(row[col] || '').trim() ? ' status c' + Model.colorIndex(String(row[col]).trim()) : '';
+        const td = el('td', { class: (col === doc.mainColumn ? 'main' : '') + chipClass }, t);
         if (col === doc.mainColumn && num.indents[i]) td.style.paddingLeft = (4 + num.indents[i] * 18) + 'px';
         tr.appendChild(td);
       }
@@ -270,30 +315,9 @@ const Views = (() => {
     root.appendChild(el('div', { class: 'scroll' }, table));
     autosizeAll(root);
     applyFreeze(table, doc.settings.freezeColumns);
-    applyGridFilter(root, ctx);
+    applyRowFilter(root, ctx);
     const edit = root.querySelector('input.colname-edit');
     if (edit) { edit.focus(); edit.select(); }
-  }
-
-  /** Hide grid rows whose visible columns do not contain the filter text (case-insensitive). */
-  function applyGridFilter(root, ctx) {
-    const q = String(ctx.gridFilter || '').trim().toLowerCase();
-    const sheet = ctx.doc.sheets[ctx.si];
-    const table = root.querySelector('table.grid');
-    if (!table || !sheet) return;
-    const num = q ? Model.numbering(ctx.doc, ctx.si).numbers : null;
-    const gridHidden = ctx.gridHidden || new Set();
-    const cols = sheet.columns.filter(c => c !== 'no' && !gridHidden.has(c));
-    let shown = 0, all = 0;
-    table.querySelectorAll('tbody tr[data-i]').forEach(tr => {
-      all++;
-      const i = +tr.dataset.i, row = sheet.rows[i];
-      const hit = !q || num[i].startsWith(q) || cols.some(c => String(row[c] || '').toLowerCase().includes(q));
-      tr.classList.toggle('filtered', !hit);
-      if (hit) shown++;
-    });
-    const info = root.querySelector('#grid-filter-info');
-    if (info) info.textContent = q ? `${shown} of ${all} rows` : '';
   }
 
   /** Freeze the handle column plus the first n sheet columns (sticky left offsets measured from the header). */
@@ -384,10 +408,11 @@ const Views = (() => {
       for (const e of g.entries) {
         any = true;
         const cur = ctx.current && ctx.current.si === e.si && ctx.current.i === e.i;
-        list.appendChild(el('button', { type: 'button', class: 'toc-item level-' + Math.min(e.level, 6) + (cur ? ' current' : ''), 'data-si': e.si, 'data-i': e.i, title: e.text },
+        const over = e.target && e.words > e.target;
+        list.appendChild(el('button', { type: 'button', class: 'toc-item level-' + Math.min(e.level, 6) + (cur ? ' current' : ''), 'data-si': e.si, 'data-i': e.i, title: e.text + (e.target ? ` — target ${fmt(e.target)} words` : '') },
           el('span', { class: 'toc-num' }, e.number),
           el('span', { class: 'toc-text' }, e.text),
-          ctx.showCounts ? el('span', { class: 'toc-count' }, fmt(e.words) + ' w') : null));
+          ctx.showCounts ? el('span', { class: 'toc-count' + (over ? ' over' : '') }, e.target ? `${fmt(e.words)} / ${fmt(e.target)} w` : fmt(e.words) + ' w') : null));
       }
     }
     if (!any) list.appendChild(el('p', { class: 'muted toc-empty' }, ctx.tocScope === 'all' ? 'No headings yet.' : 'No headings in this sheet yet. Type "# " at the start of a row to make one.'));
@@ -425,5 +450,5 @@ const Views = (() => {
     if (edit) { edit.focus(); edit.select(); }
   }
 
-  return { el, autosize, autosizeAll, visibleIndexes, renderDraft, refreshCard, refreshMeta, renderGrid, applyFreeze, applyGridFilter, renderRead, renderToc, updateTocCurrent, renderTabs };
+  return { el, autosize, autosizeAll, visibleIndexes, renderDraft, refreshCard, refreshMeta, renderGrid, applyFreeze, applyRowFilter, renderRead, renderToc, updateTocCurrent, renderTabs };
 })();

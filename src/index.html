@@ -31,6 +31,7 @@
   </div>
   <div class="group">
     <button id="btn-columns" title="Which side columns and counts the Draft view shows">Columns ▾</button>
+    <button id="btn-filter" title="Filter rows in Draft and Grid: text, or column:value such as status:todo or kind:h2">Filter</button>
     <button id="btn-collapse" title="Collapse all headings and indented groups (Draft view)">Collapse all</button>
     <button id="btn-expand" title="Expand everything (Draft view)">Expand all</button>
   </div>
@@ -129,6 +130,7 @@
       <label>Main text column <select id="st-main"></select></label>
       <label>Numbering across sheets <select id="st-numbering"><option value="continuous">continue from the previous sheet</option><option value="per-sheet">restart in each sheet</option></select></label>
       <label>Frozen columns in Grid <input type="number" id="st-freeze" min="0" max="10" step="1"></label>
+      <label>Word target for the workbook <input type="number" id="st-target" min="0" step="100" placeholder="none"></label>
       <label class="chk"><input type="checkbox" id="st-track-updated"> <span>Keep an <code>updated</code> column (time of last edit per row)</span></label>
       <label class="chk"><input type="checkbox" id="st-track-author"> <span>Keep an <code>author</code> column (last editor per row, from Author above)</span></label>
       <label class="chk"><input type="checkbox" id="st-track-counts"> <span>Keep <code>words</code> and <code>chars</code> columns (per-row counts, written on save; placed before <code>updated</code> and <code>author</code>)</span></label>
@@ -137,6 +139,7 @@
     <p class="muted" style="font-size:12.5px;margin:4px 0 0">Stored in the protected <code>_sheetwriter</code> sheet inside the workbook, with created/modified dates and links to this editor. Extra rows you add to that sheet are kept. <span id="st-extra"></span></p>
     <h3>Editor (this browser)</h3>
     <div class="fields">
+      <label>Appearance <select id="st-theme"><option value="auto">follow the system</option><option value="light">light</option><option value="dark">dark</option></select></label>
       <label>Enter key <select id="st-enter"><option value="row">Enter = new row, Shift+Enter = line break</option><option value="newline">Enter = line break, Shift+Enter = new row</option></select></label>
       <label class="chk"><input type="checkbox" id="st-copy-enabled"> <span>Write an autosave copy to a second workbook every <select id="st-copy-minutes"><option value="1">1</option><option value="2">2</option><option value="5">5</option><option value="10">10</option></select> minutes while there are unsaved changes. File: <strong id="st-copy-name"></strong> <button type="button" class="small" id="st-copy-choose">Choose file…</button></span></label>
       <label>Indent when a row starts with <select id="st-indent"><option value="   ">three spaces</option><option value="  ">two spaces</option><option value="    ">four spaces</option><option value="> ">&gt; and a space</option><option value="">nothing (Tab only)</option></select></label>
@@ -201,6 +204,7 @@
       <tr><td>Alt+Shift+← / →</td><td>Promote / demote: h1 ← h2 ← h3 ← h4 ← p ← s</td></tr>
       <tr><td>Ctrl+Enter</td><td>Cycle kind (Shift reverses); or click the kind badge</td></tr>
       <tr><td>Ctrl+.</td><td>Collapse / expand the rows under a heading, paragraph or indented row</td></tr>
+      <tr><td>Ctrl+B / Ctrl+I / Ctrl+K</td><td>Bold, italic, link around the selected text (Markdown markers; press again to remove)</td></tr>
       <tr><td>Ctrl+D</td><td>Duplicate row</td></tr>
       <tr><td>Ctrl+Shift+K</td><td>Delete row</td></tr>
       <tr><td>Ctrl+Shift+M</td><td>Move row (with sub-rows) to another chapter</td></tr>
@@ -228,6 +232,8 @@
     <p>Markdown ▾ → Import, or drop a .md file on the window. One paragraph per row by default; files written one sentence per line are detected and imported line by line; a sentence mode splits paragraphs into p and s rows. Lists become indented rows, and the side-column blockquotes and comments that Export writes are read back into their columns, so export and import round-trip. Import into a new sheet, one sheet per h1, or the current sheet. Several files at once become several sheets.</p>
     <h3>Table of contents</h3>
     <p>The Contents button opens a pane listing the headings of this sheet or of all sheets, with numbers and section word counts. Click a heading to jump to it in Draft, Grid or Read view; collapsed sections open on the way. The heading you are working under is highlighted.</p>
+    <h3>Status, targets, filter</h3>
+    <p>A column named <code>status</code> (or <code>tag</code>, <code>tags</code>, <code>state</code>) shows its value as a coloured chip under each card and tints the Grid cell; any values you like. A column named <code>target</code> with a number on a heading row sets a word target for that section, shown against the section count on the card and in the contents pane; Settings holds a target for the whole workbook, shown in the status bar. The Filter button (Draft and Grid) hides rows that do not match: plain text, or <code>column:value</code> such as <code>status:todo</code>, <code>kind:h2</code> or <code>no:2.1</code>. Pasting rich text from Word or a browser into the import dialog converts it to Markdown.</p>
     <h3>Grid, columns and tabs</h3>
     <p>Columns are shared by all chapter sheets: adding, renaming, deleting or reordering a column applies everywhere, and deleting warns if any sheet holds data in it. Click a column name to rename it, drag a column header to reorder, drag its right edge to resize. The – button hides a column in Grid view; the Columns ▾ button chooses which columns the Grid and Draft views show. Rows hide in Grid by collapsing (▾ in the number cell, Collapse all) or by typing in the filter box above the table. Double-click a sheet tab to rename it. Drag rows by the ⋮⋮ handle, drag tabs to reorder chapters. Click the title in the toolbar to change it.</p>
     <h3>Files</h3>
@@ -251,6 +257,7 @@
 <script src="../vendor/jszip.min.js"></script>
 <script src="docx.js"></script>
 <script src="importer.js"></script>
+<script src="html2md.js"></script>
 <script src="xlsxio.js"></script>
 <script src="views.js"></script>
 <script src="app.js"></script>

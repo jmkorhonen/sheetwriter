@@ -113,6 +113,26 @@ const Model = (() => {
     }
     return j;
   }
+  /** Section ends for every row at once, near-linear: if i owns j it owns everything j owns, so jump over j's block. */
+  function sectionEnds(rows) {
+    const n = rows.length;
+    const end = new Array(n);
+    const lvl = rows.map(r => SheetNumbering.headingLevel(r.kind));
+    const ind = rows.map(r => indentOf(r));
+    const knd = rows.map(r => normKind(r.kind));
+    const owns = (i, j) => {
+      if (lvl[i]) return !lvl[j] || lvl[j] > lvl[i];
+      if (lvl[j]) return false;
+      if (ind[j] > ind[i]) return true;
+      return ind[j] === ind[i] && knd[j] === 's' && knd[i] !== 's';
+    };
+    for (let i = n - 1; i >= 0; i--) {
+      let j = i + 1;
+      while (j < n && owns(i, j)) j = end[j];
+      end[i] = j;
+    }
+    return end;
+  }
   function isCollapsible(rows, i) { return sectionEnd(rows, i) > i + 1; }
   /** [start, end) of the unit that moves with row i: always its whole block. */
   function blockOf(rows, i) { return [i, sectionEnd(rows, i)]; }
@@ -172,7 +192,7 @@ const Model = (() => {
     return {
       version: 1,
       mainColumn: 'text',
-      settings: { numbering: 'continuous', title: '', author: '', description: '', created: new Date().toISOString(), trackUpdated: false, trackAuthor: false, trackCounts: true, freezeColumns: 1, countColumns: [], widths: {}, view: defaultView(), extra: {} },
+      settings: { numbering: 'continuous', title: '', author: '', description: '', created: new Date().toISOString(), trackUpdated: false, trackAuthor: false, trackCounts: true, freezeColumns: 1, countColumns: [], widths: {}, wordTarget: 0, view: defaultView(), extra: {} },
       sheets: [newChapter('Chapter 1')],
     };
   }
@@ -218,11 +238,26 @@ const Model = (() => {
       const rc = x ? { words: 0, chars: 0 } : rowCounts(doc, sheet, rows[i]);
       pw.push(pw[i] + rc.words); pc.push(pc[i] + rc.chars); pr.push(pr[i] + (x ? 0 : 1));
     }
+    const ends = sectionEnds(rows);
     return rows.map((r, i) => {
-      const end = sectionEnd(rows, i);
+      const end = ends[i];
       if (end <= i + 1) return null;
       return { words: pw[end] - pw[i], chars: pc[end] - pc[i], rows: pr[end] - pr[i] };
     });
+  }
+  /** Column used for status chips and colouring: the first of these that exists. */
+  function statusColumn(doc, sheet) { return ['status', 'tag', 'tags', 'state'].find(c => sheet.columns.includes(c)) || null; }
+  /** Column holding per-section word targets (a number on a heading row). */
+  function targetColumn(sheet) { return ['target', 'words_target', 'word_target'].find(c => sheet.columns.includes(c)) || null; }
+  function rowTarget(sheet, row) {
+    const c = targetColumn(sheet); if (!c) return 0;
+    const n = parseInt(String(row[c] || '').replace(/\s/g, ''), 10);
+    return n > 0 ? n : 0;
+  }
+  /** Stable pastel colour index (0..7) for a status value. */
+  function colorIndex(value) {
+    let h = 0; for (const ch of String(value || '').toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    return h % 8;
   }
   function userColumns(doc, sheet) { return sheet.columns.filter(c => !isSystem(doc, c)); }
   /** Table of contents: one group per chapter sheet (or only sheet `only`), with its heading rows. */
@@ -236,7 +271,7 @@ const Model = (() => {
       s.rows.forEach((r, i) => {
         if (!SheetNumbering.headingLevel(r.kind)) return;
         const text = String(r[doc.mainColumn] || '').replace(/^#{1,6}[ \t]+/, '').trim();
-        entries.push({ si, i, level: num.levels[i], number: num.numbers[i], text: text || '(untitled)', words: sec[i] ? sec[i].words : rowCounts(doc, s, r).words });
+        entries.push({ si, i, level: num.levels[i], number: num.numbers[i], text: text || '(untitled)', words: sec[i] ? sec[i].words : rowCounts(doc, s, r).words, target: rowTarget(s, r) });
       });
       out.push({ si, name: s.name, entries });
     });
@@ -628,7 +663,7 @@ const Model = (() => {
   return {
     RESERVED, META, COMPUTED, KINDS, DEFAULT_COLUMNS, normKind, isHeading, indentOf, emptyRow, newChapter, newDoc, ensureIds, newId,
     detectKindPrefix, detectIndentPrefix, stamp, isMeta, isComputed, isSystem, touch, ensureMetaColumns,
-    sectionEnd, isCollapsible, blockOf, moveBlock, siblingMoveTarget,
+    sectionEnd, sectionEnds, isCollapsible, blockOf, moveBlock, siblingMoveTarget, statusColumn, targetColumn, rowTarget, colorIndex,
     chapterSheets, chapterIndex, numbering, countColumns, rowCounts, sectionCounts, userColumns, sideColumns, rowIsEmpty, tocEntries, headingFor,
     wordCount, charCount, sheetCounts, docCounts, sheetWords, docWords, safeFileName,
     addRow, deleteRow, moveRow, duplicateRow, splitRow, mergeRow, setCell, setIndent, shiftIndent, cycleKind, shiftKind,

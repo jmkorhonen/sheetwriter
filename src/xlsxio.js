@@ -17,6 +17,7 @@ const XlsxIO = (() => {
     freeze_columns: 'How many leading columns stay frozen in the Grid view and in Excel',
     count_columns: 'Columns whose words and characters the status bar counts (empty = the main column)',
     column_widths: 'Grid column widths in pixels, name:px pairs; also used for the Excel column widths',
+    word_target: 'Word target for the whole workbook (0 = none); per-section targets go in a "target" column on heading rows',
     track_updated: 'yes/no: keep an "updated" column with the time each row was last edited in SheetWriter',
     track_author: 'yes/no: keep an "author" column with the author who last edited each row in SheetWriter',
     track_counts: 'yes/no: keep "words" and "chars" columns with per-row counts over the counted columns (written on save, recomputed on load)',
@@ -80,6 +81,7 @@ const XlsxIO = (() => {
         case 'numbering': doc.settings.numbering = value.trim() === 'per-sheet' ? 'per-sheet' : 'continuous'; break;
         case 'freeze_columns': { const n = parseInt(value, 10); doc.settings.freezeColumns = n >= 0 ? Math.min(n, 10) : 1; break; }
         case 'count_columns': doc.settings.countColumns = value.split(/[,;]/).map(s => s.trim()).filter(Boolean); break;
+        case 'word_target': { const n = parseInt(value.replace(/\s/g, ''), 10); doc.settings.wordTarget = n > 0 ? n : 0; break; }
         case 'column_widths': {
           const w = {};
           value.split(/[,;]/).forEach(p => { const m = /^\s*(.+?)\s*:\s*(\d+)\s*$/.exec(p); if (m && +m[2] > 0) w[m[1]] = +m[2]; });
@@ -124,6 +126,7 @@ const XlsxIO = (() => {
       ['freeze_columns', String(doc.settings.freezeColumns ?? 1)],
       ['count_columns', (doc.settings.countColumns || []).join(', ')],
       ['column_widths', Object.entries(doc.settings.widths || {}).map(([k, v]) => `${k}:${v}`).join(', ')],
+      ['word_target', String(doc.settings.wordTarget || 0)],
       ['track_updated', doc.settings.trackUpdated ? 'yes' : 'no'],
       ['track_author', doc.settings.trackAuthor ? 'yes' : 'no'],
       ['track_counts', doc.settings.trackCounts ? 'yes' : 'no'],

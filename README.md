@@ -63,6 +63,9 @@ Press `?` in the toolbar or F1 for the full list.
 - **Find and replace** (Ctrl+F, Ctrl+H): across all sheets and columns or narrowed down, with match case; F3 steps through matches, Replace all is one undo step.
 - **Export Word** (Ctrl+E → Download .docx): real heading styles, bold, italic, code and links from the Markdown, indented rows, side columns as small notes. Written by a small built-in OOXML writer, no Word needed.
 - **Safety**: saving warns if the file changed on disk since it was opened; a snapshot is kept in the browser every 5 minutes (Recent ▾ → Recover an autosave…); and Settings can write an autosave copy to a second workbook such as `name_AUTOSAVE.xlsx` at an interval (Edge and Chrome).
+- **Status and targets**: a `status` column shows coloured chips on cards and tints Grid cells; a `target` column with a number on a heading row sets a word target for that section, and Settings holds one for the workbook. The Filter button hides rows by text or `column:value` in Draft and Grid.
+- **Formatting keys**: Ctrl+B, Ctrl+I and Ctrl+K wrap the selection in Markdown bold, italic or a link. Pasting rich text from Word or a browser into the import dialog converts it to Markdown.
+- **Appearance**: light, dark or follow the system, in Settings. Read view has a print stylesheet.
 - **Export Markdown** (Ctrl+E): any column as one document, whole workbook or one chapter, with the same options plus a side column as blockquotes or hidden comments.
 
 ## Develop
@@ -82,7 +85,11 @@ Build:
 python build.py
 ```
 
-Run the tests: start a static server in this folder, for example `python -m http.server 8765`, and open `http://localhost:8765/tests.html`.
+Run the tests in a browser: start a static server in this folder, for example `python -m http.server 8765`, and open `http://localhost:8765/tests.html`. Or headlessly, which is what CI does on every push:
+
+```bash
+npm install && npx playwright install chromium && npm test
+```
 
 Notes for contributors:
 

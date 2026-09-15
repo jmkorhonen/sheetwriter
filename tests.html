@@ -23,6 +23,7 @@
 <script src="vendor/jszip.min.js"></script>
 <script src="src/docx.js"></script>
 <script src="src/importer.js"></script>
+<script src="src/html2md.js"></script>
 <script src="src/xlsxio.js"></script>
 <script>
 const tests = [];
@@ -336,6 +337,35 @@ test('model: importRows creates side columns, appends or replaces', () => {
   eq(doc.sheets[1].rows[3].notes, 'n'); eq(doc.sheets[1].rows[3].indent, '1');
   Model.importRows(doc, 1, imported, { replace: true }); eq(doc.sheets[1].rows.length, 2);
   const si = Model.addSheet(doc, 'Fresh'); Model.importRows(doc, si, imported); eq(doc.sheets[si].rows.length, 2, 'placeholder empty row replaced');
+});
+
+// ---- sections at scale, rich text, status and targets ----
+test('model: sectionEnds agrees with sectionEnd on a large mixed sheet, fast', () => {
+  const kinds = ['h1', 'h2', 'h3', 'p', 'p', 'p', 's', 'x'];
+  let seed = 7; const rnd = () => (seed = (seed * 48271) % 2147483647) / 2147483647;
+  const rows = Array.from({ length: 3000 }, () => ({ kind: kinds[Math.floor(rnd() * kinds.length)], indent: rnd() < 0.3 ? String(1 + Math.floor(rnd() * 3)) : '' }));
+  const t0 = performance.now();
+  const ends = Model.sectionEnds(rows);
+  const ms = performance.now() - t0;
+  for (let i = 0; i < rows.length; i += 7) eq(ends[i], Model.sectionEnd(rows, i), 'row ' + i);
+  ok(ms < 200, 'sectionEnds took ' + ms.toFixed(1) + ' ms');
+  const doc = Model.newDoc(); doc.sheets[0].rows = rows.map(r => ({ ...r, text: 'word word word' }));
+  const t1 = performance.now(); Model.sectionCounts(doc, doc.sheets[0]); const ms2 = performance.now() - t1;
+  ok(ms2 < 300, 'sectionCounts on 3000 rows took ' + ms2.toFixed(1) + ' ms');
+});
+test('html2md: headings, formatting, links, nested lists, Word list paragraphs', () => {
+  const md = Html2Md.convert('<html><body><h1>Title</h1><p>Hello <b>bold</b> and <span style="font-style:italic">it</span>, <a href="https://x.y">link</a>.</p><ul><li>one</li><li>two<ul><li>two a</li></ul></li></ul><p class="MsoListParagraph">·&nbsp; bullet from Word</p><blockquote><p>quoted</p></blockquote></body></html>');
+  eq(md, '# Title\n\nHello **bold** and *it*, [link](https://x.y).\n\n- one\n- two\n  - two a\n\n- bullet from Word\n\n> quoted\n');
+  ok(Html2Md.looksRich('<p>x</p>') && !Html2Md.looksRich('plain text'));
+});
+test('model: status column, targets, colour index', () => {
+  const doc = sampleDoc(); const s = doc.sheets[0];
+  eq(Model.statusColumn(doc, s), null);
+  Model.addColumn(doc, 0, 'status'); eq(Model.statusColumn(doc, s), 'status');
+  ok(Model.colorIndex('todo') >= 0 && Model.colorIndex('todo') < 8 && Model.colorIndex('todo') === Model.colorIndex('TODO'));
+  Model.addColumn(doc, 0, 'target'); s.rows[0].target = '2 000';
+  eq(Model.rowTarget(s, s.rows[0]), 2000); eq(Model.rowTarget(s, s.rows[1]), 0);
+  eq(Model.tocEntries(doc, 0)[0].entries[0].target, 2000);
 });
 
 // ---- blocks, docx, find ----

@@ -6,7 +6,7 @@
 
   // Editor preferences live in this browser, not in the workbook.
   const PREF_KEY = 'sheetwriter.prefs';
-  const prefs = Object.assign({ enterMode: 'row', indentTrigger: '   ', autosaveCopy: { enabled: false, minutes: 2 } }, (() => { try { return JSON.parse(localStorage.getItem(PREF_KEY) || '{}'); } catch (e) { return {}; } })());
+  const prefs = Object.assign({ enterMode: 'row', indentTrigger: '   ', theme: 'auto', autosaveCopy: { enabled: false, minutes: 2 } }, (() => { try { return JSON.parse(localStorage.getItem(PREF_KEY) || '{}'); } catch (e) { return {}; } })());
   function savePrefs() { try { localStorage.setItem(PREF_KEY, JSON.stringify(prefs)); } catch (e) { /* ignore */ } }
 
   const state = {
@@ -19,7 +19,7 @@
     sel: new Set(), selAnchor: null, clipboard: null, // row selection (ids, current sheet) and the internal row clipboard
     // Display state; saved into the workbook on save and restored on load.
     ui: { side: true, hidden: new Set(), counts: true, toc: 'off', lastToc: 'sheet', gridHidden: new Set() },
-    gridFilter: '',
+    rowFilter: '', showFilter: false,
   };
   const history = { undo: [], redo: [] };
   let typingKey = null, typingAt = 0;
@@ -55,7 +55,7 @@
   function ctx() {
     return { doc: state.doc, si: state.si, showSide: state.ui.side, hiddenColumns: state.ui.hidden, showCounts: state.ui.counts, readScope: state.readScope, readNumbering: state.readNumbering, readColumn: state.readColumn, readIndented: state.readIndented,
       collapsed: state.view === 'read' ? NO_COLLAPSE : state.collapsed, editColumn: state.editColumn, editSheet: state.editSheet, selected: state.sel,
-      gridHidden: state.ui.gridHidden, gridFilter: state.gridFilter };
+      gridHidden: state.ui.gridHidden, rowFilter: state.rowFilter, showFilter: state.showFilter };
   }
   let rendering = false; // focusout events fired by replacing the DOM must not trigger row cleanup
   let renderedView = null, renderedSi = null;
@@ -374,7 +374,8 @@
       parts.push(`Chapter: ${fmt(c.rows)} rows, ${fmt(c.words)} words, ${fmt(c.chars)} chars`);
     }
     const d = Model.docCounts(doc);
-    parts.push(`Workbook: ${fmt(d.rows)} rows, ${fmt(d.words)} words, ${fmt(d.chars)} chars`);
+    const tgt = doc.settings.wordTarget || 0;
+    parts.push(`Workbook: ${fmt(d.rows)} rows, ${fmt(d.words)}${tgt ? ` / ${fmt(tgt)}` : ''} words${tgt ? ` (${Math.round(100 * d.words / tgt)} %)` : ''}, ${fmt(d.chars)} chars`);
     parts.push(hasFS ? 'direct file access' : 'download mode');
     if (state.copyHandle && prefs.autosaveCopy.enabled) {
       const p = n => String(n).padStart(2, '0');
@@ -719,6 +720,11 @@
       return;
     }
     if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key === '.') { e.preventDefault(); toggleCollapse(i); return; }
+    if (e.ctrlKey && !e.shiftKey && !e.altKey && (e.key === 'b' || e.key === 'i' || e.key === 'k')) {
+      e.preventDefault();
+      if (e.key === 'k') linkSelection(t); else wrapSelection(t, e.key === 'b' ? '**' : '*');
+      return;
+    }
     if (e.ctrlKey && e.shiftKey && !e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
       e.preventDefault();
       if (!state.sel.size) { state.sel.add(row._id); state.selAnchor = i; }
@@ -762,6 +768,23 @@
   document.addEventListener('keyup', e => { if (e.key === 'Alt') e.preventDefault(); });
   document.addEventListener('keydown', e => { if (e.key === 'Alt' && !e.ctrlKey) e.preventDefault(); });
 
+  /** Toggle Markdown markers around the selection (or insert them at the caret). */
+  function wrapSelection(t, m) {
+    const a = t.selectionStart, b = t.selectionEnd, v = t.value, sel = v.slice(a, b);
+    const inside = sel.startsWith(m) && sel.endsWith(m) && sel.length >= 2 * m.length;
+    const outside = v.slice(a - m.length, a) === m && v.slice(b, b + m.length) === m;
+    if (inside) { t.setRangeText(sel.slice(m.length, -m.length), a, b, 'select'); }
+    else if (outside) { t.setRangeText(sel, a - m.length, b + m.length, 'select'); }
+    else if (sel) { t.setRangeText(m + sel + m, a, b); t.setSelectionRange(a + m.length, b + m.length); }
+    else { t.setRangeText(m + m, a, a); t.setSelectionRange(a + m.length, a + m.length); }
+    t.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  function linkSelection(t) {
+    const a = t.selectionStart, b = t.selectionEnd, sel = t.value.slice(a, b);
+    if (/^https?:\/\/\S+$/.test(sel)) { t.setRangeText(`[](${sel})`, a, b); t.setSelectionRange(a + 1, a + 1); }
+    else { const text = sel || 'text'; t.setRangeText(`[${text}](url)`, a, b); t.setSelectionRange(a + text.length + 3, a + text.length + 6); }
+    t.dispatchEvent(new Event('input', { bubbles: true }));
+  }
   function moveRowToSheetMenu(i, anchor) {
     const chapters = state.doc.sheets.map((s, k) => ({ s, k })).filter(x => x.s.kind === 'chapter' && x.k !== state.si);
     if (!chapters.length) { alert('There is no other chapter to move the row to.'); return; }
@@ -1011,12 +1034,16 @@
     });
   }
   $('#btn-columns').onclick = e => columnsMenu(e.currentTarget);
-  // Grid row filter: applied live, no re-render, so the box keeps focus.
+  // Row filter (Draft and Grid): applied live, no re-render, so the box keeps focus.
   viewRoot.addEventListener('input', e => {
-    if (e.target.id !== 'grid-filter') return;
-    state.gridFilter = e.target.value;
-    Views.applyGridFilter(viewRoot, ctx());
+    if (e.target.id !== 'row-filter') return;
+    state.rowFilter = e.target.value;
+    Views.applyRowFilter(viewRoot, ctx());
   });
+  $('#btn-filter').onclick = () => { state.showFilter = !state.showFilter; if (!state.showFilter) state.rowFilter = ''; if (state.view === 'read') state.view = 'draft'; render(); if (state.showFilter) { const f = $('#row-filter'); if (f) f.focus(); } };
+  // Theme
+  function applyTheme() { document.documentElement.dataset.theme = prefs.theme === 'auto' ? '' : prefs.theme; }
+  applyTheme();
   // Click the title to edit it in place.
   $('#doc-title').onclick = () => {
     if ($('#title-edit')) return;
@@ -1075,7 +1102,7 @@
     state.ui.hidden = new Set(v.hidden || []);
     state.ui.gridHidden = new Set(v.gridHidden || []);
     state.ui.counts = v.counts !== false;
-    state.gridFilter = '';
+    state.rowFilter = ''; state.showFilter = false;
     const s = state.doc.sheets[state.si];
     if (s && s.kind === 'chapter' && v.row > 0 && v.row < s.rows.length) {
       state.lastFocus = { i: v.row, col: state.doc.mainColumn, caret: 0 };
@@ -1398,7 +1425,16 @@
   }
   dlgImport.addEventListener('input', e => { if (e.target.id === 'im-text') { const t = e.target.value; if (t.trim()) { const info = Importer.analyze(t); if (!$('#im-file').textContent) { $('#im-name').value = info.title || 'Imported'; } } } refreshImportPreview(); });
   dlgImport.addEventListener('change', refreshImportPreview);
-  $('#im-text').addEventListener('paste', () => setTimeout(() => loadImportText($('#im-text').value, ''), 0));
+  $('#im-text').addEventListener('paste', e => {
+    const html = e.clipboardData && e.clipboardData.getData('text/html');
+    if (html && Html2Md.looksRich(html)) {
+      e.preventDefault();
+      loadImportText(Html2Md.convert(html), '');
+      $('#im-detect').textContent = 'Converted from rich text. ' + $('#im-detect').textContent;
+      return;
+    }
+    setTimeout(() => loadImportText($('#im-text').value, ''), 0);
+  });
   $('#im-choose').onclick = () => $('#md-input').click();
   $('#md-input').onchange = async e => {
     const files = [...e.target.files]; e.target.value = '';
@@ -1474,6 +1510,8 @@
     $('#st-track-author').checked = !!d.settings.trackAuthor;
     $('#st-track-counts').checked = !!d.settings.trackCounts;
     $('#st-enter').value = prefs.enterMode;
+    $('#st-theme').value = prefs.theme || 'auto';
+    $('#st-target').value = d.settings.wordTarget || '';
     $('#st-copy-enabled').checked = !!prefs.autosaveCopy.enabled;
     $('#st-copy-minutes').value = String(prefs.autosaveCopy.minutes || 2);
     $('#st-copy-name').textContent = state.copyHandle ? state.copyName + (state.copyNeedsPermission ? ' (permission needed)' : '') : (hasFS ? 'no file chosen' : 'needs Edge or Chrome');
@@ -1500,9 +1538,10 @@
       const vals = { title: $('#st-title').value, author: $('#st-author').value, description: $('#st-description').value,
         numbering: $('#st-numbering').value, freezeColumns: Math.max(0, Math.min(10, parseInt($('#st-freeze').value, 10) || 0)),
         countColumns: countSel.length === 1 && countSel[0] === sel.value ? [] : countSel,
+        wordTarget: Math.max(0, parseInt(String($('#st-target').value).replace(/\s/g, ''), 10) || 0),
         trackUpdated: $('#st-track-updated').checked, trackAuthor: $('#st-track-author').checked, trackCounts: $('#st-track-counts').checked };
       const main = sel.value;
-      prefs.enterMode = $('#st-enter').value; prefs.indentTrigger = indSel.value;
+      prefs.enterMode = $('#st-enter').value; prefs.indentTrigger = indSel.value; prefs.theme = $('#st-theme').value; applyTheme();
       prefs.autosaveCopy = { enabled: $('#st-copy-enabled').checked, minutes: parseInt($('#st-copy-minutes').value, 10) || 2 }; savePrefs();
       if (prefs.autosaveCopy.enabled && !state.copyHandle && hasFS) chooseCopyFile();
       dlg.close();
