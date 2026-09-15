@@ -353,7 +353,27 @@
       case 'find-close': closeFind(); break;
     }
   });
+  /** Outline operations from the contents pane: move a whole section, promote or demote it. Focus stays on the heading's entry. */
+  function tocFocus(si, i) { const b = tocRoot.querySelector(`.toc-item[data-si="${si}"][data-i="${i}"]`); if (b) b.focus(); }
+  function tocMoveSection(si, i, ti, to) {
+    let res = null;
+    mutate(d => { res = Model.moveSection(d, si, i, ti, to); if (res) { state.si = res.si; state.lastFocus = { i: res.i, col: d.mainColumn, caret: 0 }; state.focus = { i: res.i, col: d.mainColumn, caret: 'end', block: 'start' }; } });
+    if (res) tocFocus(res.si, res.i);
+  }
+  function tocShift(si, i, dir) {
+    let ok = false;
+    mutate(d => { ok = Model.shiftSectionLevels(d, si, i, dir); });
+    if (!ok) flashStatus(dir < 0 ? 'Already at h1, or a sub-heading would go above h1.' : 'A heading in this section is already h4.');
+    tocFocus(si, i);
+  }
+  function tocSibling(si, i, dir) {
+    const to = Model.siblingMoveTarget(state.doc, si, i, dir);
+    if (to == null) return;
+    tocMoveSection(si, i, si, to);
+  }
   tocRoot.addEventListener('click', e => {
+    const op = e.target.closest('.toc-op');
+    if (op) { tocShift(+op.dataset.si, +op.dataset.i, op.dataset.op === 'promote' ? -1 : 1); return; }
     const item = e.target.closest('.toc-item');
     if (item) { goToRow(+item.dataset.si, +item.dataset.i); return; }
     const sh = e.target.closest('.toc-sheet');
@@ -363,9 +383,50 @@
   tocRoot.addEventListener('change', e => {
     if (e.target.id === 'toc-scope') { state.ui.toc = e.target.value; state.ui.lastToc = e.target.value; renderToc(); }
   });
+  tocRoot.addEventListener('keydown', e => {
+    const item = e.target.closest && e.target.closest('.toc-item');
+    if (!item || !e.altKey) return;
+    const si = +item.dataset.si, i = +item.dataset.i;
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); tocSibling(si, i, e.key === 'ArrowUp' ? -1 : 1); }
+    else if (e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) { e.preventDefault(); tocShift(si, i, e.key === 'ArrowLeft' ? -1 : 1); }
+  });
+  let dragToc = null;
+  const tocDropTarget = e => {
+    const row = e.target.closest && e.target.closest('.toc-row');
+    if (row) { const r = row.getBoundingClientRect(); return { el: row, si: +row.dataset.si, i: +row.dataset.i, above: e.clientY < r.top + r.height / 2 }; }
+    const sh = e.target.closest && e.target.closest('.toc-sheet');
+    if (sh) return { el: sh, si: +sh.dataset.si, i: null, above: false };
+    return null;
+  };
+  tocRoot.addEventListener('dragover', e => {
+    if (!dragToc) return;
+    const t = tocDropTarget(e); if (!t) return;
+    e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+    tocRoot.querySelectorAll('.drop-above, .drop-below, .drop-target').forEach(n => n.classList.remove('drop-above', 'drop-below', 'drop-target'));
+    t.el.classList.add(t.i == null ? 'drop-target' : t.above ? 'drop-above' : 'drop-below');
+  });
+  tocRoot.addEventListener('drop', e => {
+    if (!dragToc) return;
+    const t = tocDropTarget(e); const src = dragToc; dragToc = null;
+    if (!t) return;
+    e.preventDefault();
+    const rows = state.doc.sheets[t.si].rows;
+    let to;
+    if (t.i == null) to = rows.length; // dropped on a sheet name: end of that sheet
+    else { const [ts, te] = Model.blockOf(rows, t.i); to = t.above ? ts : te; }
+    if (t.si === src.si && t.i === src.i) { renderToc(); return; }
+    tocMoveSection(src.si, src.i, t.si, to);
+  });
   const fmt = n => n.toLocaleString('en-US').replace(/,/g, ' ');
   function docTitle() { return state.doc.settings.title || state.fileName.replace(/\.xlsx$/i, ''); }
+  /** A short message in the status bar, replaced by the normal status after a few seconds. */
+  let flashTimer = null;
+  function flashStatus(msg) {
+    statusEl.textContent = msg;
+    clearTimeout(flashTimer); flashTimer = setTimeout(() => { flashTimer = null; renderStatus(); }, 3500);
+  }
   function renderStatus() {
+    if (flashTimer) return;
     const doc = state.doc, sheet = doc.sheets[state.si];
     const hhmm = t => { const d = new Date(t); const p = n => String(n).padStart(2, '0'); return `${p(d.getHours())}:${p(d.getMinutes())}`; };
     const parts = [state.fileName, state.dirty ? 'unsaved changes' : (state.savedAt ? `saved ${hhmm(state.savedAt)}` : 'saved')];
@@ -853,10 +914,12 @@
       return;
     }
     const tab = e.target.closest && e.target.closest('.tab[data-i]');
-    if (tab) { dragTab = +tab.dataset.i; e.dataTransfer.setData('text/sw-tab', String(dragTab)); e.dataTransfer.effectAllowed = 'move'; }
+    if (tab) { dragTab = +tab.dataset.i; e.dataTransfer.setData('text/sw-tab', String(dragTab)); e.dataTransfer.effectAllowed = 'move'; return; }
+    const ti = e.target.closest && e.target.closest('.toc-item');
+    if (ti) { dragToc = { si: +ti.dataset.si, i: +ti.dataset.i }; e.dataTransfer.setData('text/sw-toc', '1'); e.dataTransfer.effectAllowed = 'move'; ti.closest('.toc-row').classList.add('dragging'); }
   });
   document.addEventListener('dragend', () => {
-    dragRow = null; dragTab = null; dragCol = null; dragSel = false;
+    dragRow = null; dragTab = null; dragCol = null; dragSel = false; dragToc = null;
     document.querySelectorAll('.dragging, .drop-above, .drop-below, .drop-target, .drop-left, .drop-right').forEach(n => n.classList.remove('dragging', 'drop-above', 'drop-below', 'drop-target', 'drop-left', 'drop-right'));
   });
   const colDropTarget = e => {

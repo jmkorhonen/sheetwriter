@@ -342,6 +342,21 @@ test('model: importRows creates side columns, appends or replaces', () => {
 });
 
 // ---- sections at scale, rich text, status and targets ----
+test('model: outline: move a section within and across sheets, promote and demote with sub-headings', () => {
+  const doc = Model.newDoc(); const s = doc.sheets[0];
+  const mk = (kind, text) => ({ ...Model.emptyRow(s.columns, kind), text });
+  s.rows = [mk('h1', 'A'), mk('p', 'a1'), mk('h2', 'A.1'), mk('p', 'a11'), mk('h1', 'B'), mk('p', 'b1'), mk('h1', 'C')];
+  const texts = si => doc.sheets[si].rows.map(r => r.text);
+  eq(Model.moveSection(doc, 0, 4, 0, 0), { si: 0, i: 0 }); eq(texts(0), ['B', 'b1', 'A', 'a1', 'A.1', 'a11', 'C'], 'B before A');
+  eq(Model.moveSection(doc, 0, 4, 0, 7), { si: 0, i: 5 }); eq(texts(0), ['B', 'b1', 'A', 'a1', 'C', 'A.1', 'a11'], 'A.1 with its rows to the end');
+  eq(Model.moveSection(doc, 0, 2, 0, 3), null, 'drop inside own section is a no-op');
+  Model.addSheet(doc, 'Two'); const t = doc.sheets[1]; t.rows = [{ ...Model.emptyRow(t.columns, 'h1'), text: 'T' }, { ...Model.emptyRow(t.columns, 'p'), text: 't1' }];
+  eq(Model.moveSection(doc, 0, 4, 1, 1), { si: 1, i: 1 }); eq(texts(0), ['B', 'b1', 'A', 'a1']); eq(texts(1), ['T', 'C', 'A.1', 'a11', 't1'], 'section moved into the other sheet before t1');
+  eq(Model.shiftSectionLevels(doc, 1, 1, 1), true); eq(doc.sheets[1].rows.map(r => r['.kind']), ['h1', 'h2', 'h3', 'p', 'p'], 'demote C: C h2, A.1 h3');
+  eq(Model.shiftSectionLevels(doc, 1, 1, -1), true); eq(doc.sheets[1].rows.map(r => r['.kind']), ['h1', 'h1', 'h2', 'p', 'p'], 'promote back');
+  eq(Model.shiftSectionLevels(doc, 1, 1, -1), false, 'cannot go above h1');
+  doc.sheets[1].rows[2]['.kind'] = 'h4'; eq(Model.shiftSectionLevels(doc, 1, 1, 1), false, 'a sub-heading at h4 blocks demotion'); eq(doc.sheets[1].rows[1]['.kind'], 'h1', 'unchanged');
+});
 test('model: sectionEnds agrees with sectionEnd on a large mixed sheet, fast', () => {
   const kinds = ['h1', 'h2', 'h3', 'p', 'p', 'p', 's', 'x'];
   let seed = 7; const rnd = () => (seed = (seed * 48271) % 2147483647) / 2147483647;

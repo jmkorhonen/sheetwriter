@@ -166,6 +166,30 @@ const Model = (() => {
     rows.splice(t, 0, ...block);
     return t;
   }
+  /** Move the section owned by row i (a heading with its rows) before row `to` of sheet ti, possibly another sheet.
+   *  Returns {si, i} of the moved heading, or null when nothing moved. */
+  function moveSection(doc, si, i, ti, to) {
+    const rows = doc.sheets[si].rows;
+    const [start, end] = blockOf(rows, i);
+    if (ti === si) {
+      if (to >= start && to <= end) return null;
+      return { si, i: moveBlock(doc, si, start, end - start, to) };
+    }
+    const idxs = []; for (let k = start; k < end; k++) idxs.push(k);
+    const at = moveRowsToSheet(doc, si, idxs, ti, to);
+    return at == null ? null : { si: ti, i: at };
+  }
+  /** Promote (dir -1) or demote (dir +1) every heading in the section owned by heading i, keeping their relative levels.
+   *  Refused (false) when a heading would leave h1..h4. */
+  function shiftSectionLevels(doc, si, i, dir) {
+    const s = doc.sheets[si], rows = s.rows;
+    const [start, end] = blockOf(rows, i);
+    const heads = [];
+    for (let k = start; k < end; k++) { const hl = SheetNumbering.headingLevel(rows[k]['.kind']); if (hl) heads.push([k, hl]); }
+    if (!heads.length || heads.some(([, hl]) => hl + dir < 1 || hl + dir > 4)) return false;
+    for (const [k, hl] of heads) { rows[k]['.kind'] = 'h' + (hl + dir); touch(doc, s, rows[k]); }
+    return true;
+  }
   /** Sibling-aware targets. Returns the `to` index for moveBlock, or null. */
   function siblingMoveTarget(doc, si, i, dir) {
     const rows = doc.sheets[si].rows;
@@ -696,7 +720,7 @@ const Model = (() => {
   return {
     RESERVED, META, COMPUTED, IDENT, KINDS, DEFAULT_COLUMNS, normKind, isHeading, indentOf, emptyRow, newChapter, newDoc, ensureIds, newId, ensureRowIds, newRowId,
     detectKindPrefix, detectIndentPrefix, stamp, isMeta, isComputed, isSystem, touch, ensureMetaColumns,
-    sectionEnd, sectionEnds, isCollapsible, blockOf, moveBlock, siblingMoveTarget, statusColumn, targetColumn, rowTarget, roleColumn, suggestRole, colorIndex,
+    sectionEnd, sectionEnds, isCollapsible, blockOf, moveBlock, moveSection, shiftSectionLevels, siblingMoveTarget, statusColumn, targetColumn, rowTarget, roleColumn, suggestRole, colorIndex,
     chapterSheets, chapterIndex, numbering, countColumns, rowCounts, sectionCounts, userColumns, sideColumns, rowIsEmpty, tocEntries, headingFor,
     wordCount, charCount, sheetCounts, docCounts, sheetWords, docWords, safeFileName,
     addRow, deleteRow, moveRow, duplicateRow, splitRow, mergeRow, setCell, setIndent, shiftIndent, cycleKind, shiftKind,

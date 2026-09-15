@@ -412,10 +412,15 @@ const Views = (() => {
         any = true;
         const cur = ctx.current && ctx.current.si === e.si && ctx.current.i === e.i;
         const over = e.target && e.words > e.target;
-        list.appendChild(el('button', { type: 'button', class: 'toc-item level-' + Math.min(e.level, 6) + (cur ? ' current' : ''), 'data-si': e.si, 'data-i': e.i, title: e.text + (e.target ? ` — target ${fmt(e.target)} words` : '') },
+        const item = el('button', { type: 'button', class: 'toc-item level-' + Math.min(e.level, 6) + (cur ? ' current' : ''), 'data-si': e.si, 'data-i': e.i, draggable: 'true',
+          title: e.text + (e.target ? ` — target ${fmt(e.target)} words` : '') + '\nClick to jump. Drag to move the section. Alt+↑/↓ move it past a sibling, Alt+Shift+←/→ promote or demote it.' },
           el('span', { class: 'toc-num' }, e.number),
           el('span', { class: 'toc-text' }, e.text),
-          ctx.showCounts ? el('span', { class: 'toc-count' + (over ? ' over' : '') }, e.target ? `${fmt(e.words)} / ${fmt(e.target)} w` : fmt(e.words) + ' w') : null));
+          ctx.showCounts ? el('span', { class: 'toc-count' + (over ? ' over' : '') }, e.target ? `${fmt(e.words)} / ${fmt(e.target)} w` : fmt(e.words) + ' w') : null);
+        list.appendChild(el('div', { class: 'toc-row', 'data-si': e.si, 'data-i': e.i }, item,
+          el('span', { class: 'toc-ops' },
+            el('button', { type: 'button', class: 'toc-op', 'data-op': 'promote', 'data-si': e.si, 'data-i': e.i, title: 'Promote this section: h2 → h1, and its sub-headings with it (Alt+Shift+←)' }, '◂'),
+            el('button', { type: 'button', class: 'toc-op', 'data-op': 'demote', 'data-si': e.si, 'data-i': e.i, title: 'Demote this section: h1 → h2, and its sub-headings with it (Alt+Shift+→)' }, '▸'))));
       }
     }
     if (!any) list.appendChild(el('p', { class: 'muted toc-empty' }, ctx.tocScope === 'all' ? 'No headings yet.' : 'No headings in this sheet yet. Type "# " at the start of a row to make one.'));

@@ -69,7 +69,16 @@ body.toc-open #toc { display: flex; }
 .toc-sheet { display: block; width: 100%; text-align: left; border: none; background: var(--bg2); padding: 4px 10px; font: inherit; font-weight: 600; font-size: 12.5px; cursor: pointer; margin-top: 6px; color: var(--ink2); }
 .toc-sheet:hover { background: var(--accent-soft); }
 .toc-sheet.active { color: var(--accent); }
-.toc-item { display: flex; gap: 6px; width: 100%; text-align: left; border: none; background: none; padding: 3px 8px; cursor: pointer; font: inherit; font-size: 13px; align-items: baseline; border-left: 3px solid transparent; color: var(--ink); }
+.toc-row { display: flex; align-items: stretch; }
+.toc-row .toc-ops { display: none; flex: none; align-items: center; padding-right: 4px; }
+.toc-row:hover .toc-ops, .toc-row:focus-within .toc-ops { display: inline-flex; }
+.toc-op { border: none; background: none; color: var(--muted); cursor: pointer; font-size: 12px; padding: 0 3px; line-height: 1; }
+.toc-op:hover { color: var(--accent); }
+.toc-row.dragging { opacity: .4; }
+.toc-row.drop-above { box-shadow: 0 -2px 0 0 var(--accent); }
+.toc-row.drop-below { box-shadow: 0 2px 0 0 var(--accent); }
+.toc-sheet.drop-target { outline: 2px solid var(--accent); outline-offset: -2px; }
+.toc-item { display: flex; gap: 6px; min-width: 0; flex: 1; text-align: left; border: none; background: none; padding: 3px 8px; cursor: pointer; font: inherit; font-size: 13px; align-items: baseline; border-left: 3px solid transparent; color: var(--ink); }
 .toc-item:hover { background: var(--accent-soft); }
 .toc-item.current { border-left-color: var(--accent); background: var(--findbg); }
 .toc-item .toc-num { font-family: var(--mono); font-size: 11px; color: var(--muted); flex: none; }

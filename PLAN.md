@@ -239,7 +239,7 @@ Since §10 and §11 the app has gained, in order: a table of contents pane; Mark
 
 The README is the current user documentation; the help dialog in the app mirrors it. Sections 3 to 9 above describe the original design and are kept for the reasoning; where they conflict with the README, the README is right.
 
-0.14 gave every row a persistent `.id` (hidden last column) and keeps Excel fills, borders, comments and font name/colour/underline/strike on chapter sheets by that id; bold, italic and size stay the app's, formulas and row heights are dropped.
+0.14 gave every row a persistent `.id` (hidden last column) and keeps Excel fills, borders, comments and font name/colour/underline/strike on chapter sheets by that id; bold, italic and size stay the app's, formulas and row heights are dropped. 0.15 made the contents pane an outliner: drag sections between headings and sheets, promote and demote with sub-headings, Alt+arrow keys.
 
 Open: formatting of data sheets in `.ods` files (only cell values are carried through), frozen panes in `.ods`, Firefox and Safari checks, a mobile layout, releases with a forced-download asset. The `.ods` and `.odt` writers are checked for well-formedness and round trips by the tests but have not yet been opened in LibreOffice.
 

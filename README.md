@@ -63,6 +63,7 @@ Numbering continues from sheet to sheet by default, so sheets are containers rat
 | Ctrl+F / Ctrl+H, F3 | Find, find and replace, next match. |
 | Ctrl+B / Ctrl+I / Ctrl+K | Bold, italic, link around the selection. |
 | Ctrl+S, Ctrl+O, Ctrl+Z / Ctrl+Y, Ctrl+E | Save, open, undo / redo, export Markdown or Word. |
+| Alt+↑ / ↓, Alt+Shift+← / → in the Contents pane | Move the focused section past a sibling; promote or demote it with its sub-headings. |
 
 Press `?` in the toolbar or F1 for the full list.
 
@@ -72,7 +73,7 @@ Press `?` in the toolbar or F1 for the full list.
 - **Grid**: every column as a table, frozen header and number column, drag handles, inline column renaming, drag a header to reorder. Columns are shared by all chapter sheets: adding, renaming, deleting or reordering applies everywhere, and deleting warns if any sheet holds data in the column.
 - **Columns ▾** chooses which side columns and counts the Draft view shows. This display state, with the current view, sheet, row and table of contents, is saved in the workbook and restored when the file is opened again. Click the title in the toolbar to change it.
 - **Read**: the text as flowing prose, with numbering none / headings / all and indented rows as paragraphs or nested lists.
-- **Contents**: a pane listing the headings of this sheet or of all sheets, with numbers and section word counts. Click to jump; the heading you are working under is highlighted.
+- **Contents**: a pane listing the headings of this sheet or of all sheets, with numbers and section word counts. Click to jump; the heading you are working under is highlighted. The pane is also an outliner: drag a heading to move its whole section, above or below another heading or onto a sheet name to move it to that sheet; the ◂ ▸ buttons promote or demote a section with its sub-headings; on a focused entry, Alt+↑/↓ moves the section past a sibling and Alt+Shift+←/→ promotes or demotes it.
 - **Import** (toolbar button, or drop a `.md` file on the window): headings become h1–h4 rows, paragraphs become rows (or sentences, or lines for files written one sentence per line, which are detected), list items become indented rows, and the side-column blockquotes and comments that Export writes are read back into their columns. Into a new sheet, one sheet per h1, or the current sheet, with a preview first.
 - **Find and replace** (Ctrl+F, Ctrl+H): across all sheets and columns or narrowed down, with match case; F3 steps through matches, Replace all is one undo step.
 - **OpenDocument**: save the workbook as `.ods` (choose the extension in Save as) for LibreOffice, with the same sheets, settings sheet, contents sheet and header protection; `.ods` files open too. Export the text as `.odt` from the Export dialog. Limits: data-sheet formatting is carried through only for `.xlsx`, and `.ods` has no frozen panes.
