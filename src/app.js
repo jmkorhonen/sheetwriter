@@ -80,6 +80,9 @@
       $('#btn-undo').disabled = !history.undo.length;
       $('#btn-redo').disabled = !history.redo.length;
       $('#btn-filter').classList.toggle('active', !!state.showFilter);
+      // Filter and Columns act on Draft and Grid; in Read view they are greyed out rather than switching the view.
+      $('#btn-filter').disabled = state.view === 'read';
+      $('#btn-columns').disabled = state.view === 'read';
       document.body.classList.toggle('toc-open', state.ui.toc !== 'off');
       $('#btn-toc').classList.toggle('active', state.ui.toc !== 'off');
       renderToc();
@@ -1040,7 +1043,7 @@
     state.rowFilter = e.target.value;
     Views.applyRowFilter(viewRoot, ctx());
   });
-  $('#btn-filter').onclick = () => { state.showFilter = !state.showFilter; if (!state.showFilter) state.rowFilter = ''; if (state.view === 'read') state.view = 'draft'; render(); if (state.showFilter) { const f = $('#row-filter'); if (f) f.focus(); } };
+  $('#btn-filter').onclick = () => { if (state.view === 'read') return; state.showFilter = !state.showFilter; if (!state.showFilter) state.rowFilter = ''; render(); if (state.showFilter) { const f = $('#row-filter'); if (f) f.focus(); } };
   // Theme
   function applyTheme() { document.documentElement.dataset.theme = prefs.theme === 'auto' ? '' : prefs.theme; }
   applyTheme();
