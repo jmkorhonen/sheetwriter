@@ -199,7 +199,7 @@ table.grid th .colops { margin-left: 6px; opacity: .35; }
 table.grid th:hover .colops { opacity: 1; }
 table.grid th .colops button, table.grid td.rowops button { border: none; background: none; cursor: pointer; padding: 0 3px; font-size: 12px; color: var(--ink3); border-radius: 3px; }
 table.grid th .colops button:hover, table.grid td.rowops button:hover { color: var(--accent); background: var(--accent-soft); }
-table.grid button.danger { color: var(--danger); font-weight: 700; font-size: 14px; }
+table.grid td.rowops button.danger, table.grid th .colops button.danger { color: var(--danger); font-weight: 700; font-size: 14px; }
 table.grid th, table.grid th .colops, table.grid th.addcol { white-space: nowrap; overflow: hidden; }
 table.grid th.addcol { overflow: visible; }
 table.grid button.danger:hover { color: var(--paper) !important; background: var(--warn) !important; }
