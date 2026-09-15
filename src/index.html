@@ -127,7 +127,10 @@
       <label>Title <input type="text" id="st-title"></label>
       <label>Author <input type="text" id="st-author"></label>
       <label class="wide">Description <input type="text" id="st-description"></label>
-      <label>Main text column <select id="st-main"></select></label>
+      <div class="wide"><div class="fieldlabel">Column roles: which of your columns the app treats specially. Any name works; columns starting with a dot are SheetWriter's own.</div></div>
+      <label>Main text column ★ <select id="st-main"></select></label>
+      <label>Status column ● (coloured chips) <select id="st-role-status"></select><span class="muted" id="st-role-status-hint"></span></label>
+      <label>Target column ◎ (word targets on heading rows) <select id="st-role-target"></select><span class="muted" id="st-role-target-hint"></span></label>
       <label>Numbering across sheets <select id="st-numbering"><option value="continuous">continue from the previous sheet</option><option value="per-sheet">restart in each sheet</option></select></label>
       <label>Frozen columns in Grid <input type="number" id="st-freeze" min="0" max="10" step="1"></label>
       <label>Word target for the workbook <input type="number" id="st-target" min="0" step="100" placeholder="none"></label>
@@ -186,7 +189,7 @@
       <button type="button" class="small" id="ab-download">Download latest version</button>
       <a id="ab-download-link" href="#" target="_blank" rel="noopener" style="font-size:12px">(direct link)</a>
     </div>
-    <p>A text editor whose document is an Excel workbook. One argument per row, extra columns for notes, sources, examples. Each sheet is a chapter. The <code>kind</code> column marks headings and paragraphs, <code>indent</code> nests rows, <code>no</code> holds the numbering, written on save. Cells are Markdown.</p>
+    <p>A text editor whose document is an Excel workbook. One argument per row, extra columns for notes, sources, examples. Each sheet is a chapter. Columns whose names start with a dot belong to SheetWriter: <code>.kind</code> marks headings and paragraphs, <code>.indent</code> nests rows, <code>.no</code> holds the numbering, <code>.words</code>, <code>.chars</code>, <code>.updated</code> and <code>.author</code> are maintained on save. Every other column is yours to name. Cells are Markdown.</p>
     <h3>Kinds and structure</h3>
     <table>
       <tr><td>h1 … h4</td><td>Headings. h1 is always one number (1, 2, 3), h2 two (2.1), h3 three (2.1.1). Numbering continues from sheet to sheet, so a chapter per sheet that starts with an h1 row is numbered 2, 3, …; Settings can make each sheet restart at 1 instead. Type <kbd>#</kbd> to <kbd>####</kbd> and a space at the start of a row to set the kind.</td></tr>
@@ -233,7 +236,7 @@
     <h3>Table of contents</h3>
     <p>The Contents button opens a pane listing the headings of this sheet or of all sheets, with numbers and section word counts. Click a heading to jump to it in Draft, Grid or Read view; collapsed sections open on the way. The heading you are working under is highlighted.</p>
     <h3>Status, targets, filter</h3>
-    <p>A column named <code>status</code> (or <code>tag</code>, <code>tags</code>, <code>state</code>) shows its value as a coloured chip under each card and tints the Grid cell; any values you like. A column named <code>target</code> with a number on a heading row sets a word target for that section, shown against the section count on the card and in the contents pane; Settings holds a target for the whole workbook, shown in the status bar. The Filter button (Draft and Grid) hides rows that do not match: plain text, or <code>column:value</code> such as <code>status:todo</code>, <code>kind:h2</code> or <code>no:2.1</code>. Pasting rich text from Word or a browser into the import dialog converts it to Markdown.</p>
+    <p>Settings → Column roles chooses which of your columns the app treats specially, whatever their names: the main text column (★), a status column (●) whose values show as coloured chips under each card and tint the Grid cell, and a target column (◎) whose number on a heading row sets a word target for that section, shown against the section count on the card and in the contents pane. Settings also holds a target for the whole workbook, shown in the status bar. The Filter button (Draft and Grid) hides rows that do not match: plain text, or <code>column:value</code> such as <code>status:todo</code>, <code>kind:h2</code> or <code>no:2.1</code>. Pasting rich text from Word or a browser into the import dialog converts it to Markdown.</p>
     <h3>Grid, columns and tabs</h3>
     <p>Columns are shared by all chapter sheets: adding, renaming, deleting or reordering a column applies everywhere, and deleting warns if any sheet holds data in it. Click a column name to rename it, drag a column header to reorder, drag its right edge to resize. The – button hides a column in Grid view; the Columns ▾ button chooses which columns the Grid and Draft views show. Rows hide in Grid by collapsing (▾ in the number cell, Collapse all) or by typing in the filter box above the table. Double-click a sheet tab to rename it. Drag rows by the ⋮⋮ handle, drag tabs to reorder chapters. Click the title in the toolbar to change it.</p>
     <h3>Files</h3>

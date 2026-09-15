@@ -30,7 +30,7 @@ const tests = [];
 const test = (name, fn) => tests.push({ name, fn });
 const eq = (a, b, msg) => { const sa = JSON.stringify(a), sb = JSON.stringify(b); if (sa !== sb) throw new Error((msg ? msg + ': ' : '') + 'expected ' + sb + ' got ' + sa); };
 const ok = (v, msg) => { if (!v) throw new Error(msg || 'expected truthy'); };
-const rows = (...kinds) => kinds.map(k => (k && typeof k === 'object') ? k : { kind: k });
+const rows = (...kinds) => kinds.map(k => (k && typeof k === 'object') ? k : { '.kind': k });
 const nums = (r, o) => SheetNumbering.compute(r, o).numbers;
 
 // ---- numbering ----
@@ -50,7 +50,7 @@ test('numbering: state continues across sheets', () => {
 });
 test('numbering: empty kind counts as body', () => eq(nums(rows('h1', '', undefined)), ['1', '1.1', '1.2']));
 test('numbering: indent adds levels below the paragraph', () => {
-  const r = rows('h2', { kind: 'p' }, { kind: 'p', indent: '1' }, { kind: 'p', indent: '2' }, { kind: 'p', indent: '1' }, { kind: 'p' }, 'h1', { kind: 'p', indent: '1' });
+  const r = rows('h2', { '.kind': 'p' }, { '.kind': 'p', '.indent': '1' }, { '.kind': 'p', '.indent': '2' }, { '.kind': 'p', '.indent': '1' }, { '.kind': 'p' }, 'h1', { '.kind': 'p', '.indent': '1' });
   const n = SheetNumbering.compute(r);
   eq(n.numbers, ['1', '1.1', '1.1.1', '1.1.1.1', '1.1.2', '1.2', '2', '2.1']);
   eq(n.warnings[7], true, 'indent right after a heading is clamped to 0');
@@ -61,19 +61,19 @@ test('numbering: indent adds levels below the paragraph', () => {
 function sampleDoc() {
   const doc = Model.newDoc();
   doc.sheets = [];
-  const s1 = Model.newChapter('Intro', ['no', 'kind', 'text', 'notes', 'sources']);
+  const s1 = Model.newChapter('Intro', ['.no', '.kind', 'text', 'notes', 'sources']);
   s1.rows = [
-    { no: '', kind: 'h1', text: 'Why rows', notes: '', sources: '' },
-    { no: '', kind: 'p', text: 'First argument with **bold**.', notes: 'check', sources: 'Smith 2020' },
-    { no: '', kind: 's', text: 'Second sentence of the same paragraph.', notes: '', sources: 'Jones 2021' },
-    { no: '', kind: 'x', text: 'Parked idea', notes: '', sources: '' },
-    { no: '', kind: 'p', text: 'Ääkköset ja ö toimivat.', notes: '', sources: '' },
-    { no: '', kind: 'p', text: '=SUM(A1) is text, not a formula', notes: '-5 % growth', sources: '' },
+    { '.no': '', '.kind': 'h1', text: 'Why rows', notes: '', sources: '' },
+    { '.no': '', '.kind': 'p', text: 'First argument with **bold**.', notes: 'check', sources: 'Smith 2020' },
+    { '.no': '', '.kind': 's', text: 'Second sentence of the same paragraph.', notes: '', sources: 'Jones 2021' },
+    { '.no': '', '.kind': 'x', text: 'Parked idea', notes: '', sources: '' },
+    { '.no': '', '.kind': 'p', text: 'Ääkköset ja ö toimivat.', notes: '', sources: '' },
+    { '.no': '', '.kind': 'p', text: '=SUM(A1) is text, not a formula', notes: '-5 % growth', sources: '' },
   ];
-  const s2 = Model.newChapter('Body', ['no', 'kind', 'text', 'notes', 'sources']);
+  const s2 = Model.newChapter('Body', ['.no', '.kind', 'text', 'notes', 'sources']);
   s2.rows = [
-    { no: '', kind: 'h2', text: 'Skipped level', notes: '', sources: '' },
-    { no: '', kind: 'p', text: 'Under it.', notes: '', sources: '' },
+    { '.no': '', '.kind': 'h2', text: 'Skipped level', notes: '', sources: '' },
+    { '.no': '', '.kind': 'p', text: 'Under it.', notes: '', sources: '' },
   ];
   doc.sheets.push(s1, s2);
   doc.settings.title = 'Test workbook: draft/1'; doc.settings.author = 'Tester';
@@ -83,12 +83,12 @@ function sampleDoc() {
 test('model: split and merge round trip', () => {
   const doc = sampleDoc();
   Model.splitRow(doc, 0, 1, 6);
-  eq(doc.sheets[0].rows[1].text, 'First'); eq(doc.sheets[0].rows[2].text, 'argument with **bold**.'); eq(doc.sheets[0].rows[2].kind, 'p');
+  eq(doc.sheets[0].rows[1].text, 'First'); eq(doc.sheets[0].rows[2].text, 'argument with **bold**.'); eq(doc.sheets[0].rows[2]['.kind'], 'p');
   const caret = Model.mergeRow(doc, 0, 1);
   eq(caret, 5); eq(doc.sheets[0].rows[1].text, 'First argument with **bold**.');
 });
 test('model: split a heading gives a paragraph', () => {
-  const doc = sampleDoc(); Model.splitRow(doc, 0, 0, 3); eq(doc.sheets[0].rows[1].kind, 'p');
+  const doc = sampleDoc(); Model.splitRow(doc, 0, 0, 3); eq(doc.sheets[0].rows[1]['.kind'], 'p');
 });
 test('model: move rows to another sheet adds missing columns, never _id', () => {
   const doc = sampleDoc();
@@ -108,8 +108,8 @@ test('model: column operations apply to every chapter sheet', () => {
   doc.sheets[0].rows[1].cases = 'x'; doc.sheets[1].rows[0].cases = 'y'; doc.sheets[1].rows[1].cases = 'z';
   eq(Model.columnData(doc, 'cases'), [{ sheet: 'Intro', count: 1 }, { sheet: 'Body', count: 2 }]);
   Model.moveColumnBefore(doc, 0, 'cases', 'notes');
-  eq(doc.sheets[0].columns, ['no', 'kind', 'indent', 'text', 'cases', 'notes', 'sources']);
-  eq(doc.sheets[1].columns, ['no', 'kind', 'indent', 'text', 'cases', 'notes', 'sources'], 'other sheets follow the order');
+  eq(doc.sheets[0].columns, ['.no', '.kind', '.indent', 'text', 'cases', 'notes', 'sources']);
+  eq(doc.sheets[1].columns, ['.no', '.kind', '.indent', 'text', 'cases', 'notes', 'sources'], 'other sheets follow the order');
   Model.moveColumn(doc, 1, 'sources', -1);
   eq(doc.sheets[0].columns.slice(-2), ['sources', 'notes']);
   Model.deleteColumn(doc, 0, 'cases');
@@ -117,29 +117,30 @@ test('model: column operations apply to every chapter sheet', () => {
   // a sheet with an extra column keeps it after the shared ones
   doc.sheets[1].columns.push('only2'); doc.sheets[1].rows.forEach(r => r.only2 = '');
   Model.moveColumnBefore(doc, 0, 'notes', 'text');
-  eq(doc.sheets[1].columns, ['no', 'kind', 'indent', 'notes', 'text', 'sources', 'only2']);
+  eq(doc.sheets[1].columns, ['.no', '.kind', '.indent', 'notes', 'text', 'sources', 'only2']);
 });
 test('model: rename main column follows across sheets', () => {
   const doc = sampleDoc(); Model.renameColumn(doc, 0, 'text', 'body');
   eq(doc.mainColumn, 'body'); ok(doc.sheets[1].columns.includes('body')); eq(doc.sheets[1].rows[0].body, 'Skipped level');
 });
 test('model: shiftKind ladder', () => {
-  const doc = sampleDoc(); Model.shiftKind(doc, 0, 1, -1); eq(doc.sheets[0].rows[1].kind, 'h4');
-  Model.shiftKind(doc, 0, 3, -1); eq(doc.sheets[0].rows[3].kind, 'p', 'x promotes to p');
+  const doc = sampleDoc(); Model.shiftKind(doc, 0, 1, -1); eq(doc.sheets[0].rows[1]['.kind'], 'h4');
+  Model.shiftKind(doc, 0, 3, -1); eq(doc.sheets[0].rows[3]['.kind'], 'p', 'x promotes to p');
 });
 test('model: numbering continues across sheets or restarts per sheet', () => {
   const doc = sampleDoc(); eq(Model.numbering(doc, 1).numbers, ['1.6', '1.6.1'], 'h2 in sheet 2 continues section 1 of sheet 1');
   doc.settings.numbering = 'per-sheet'; eq(Model.numbering(doc, 1).numbers, ['1', '1.1']);
-  doc.settings.numbering = 'continuous'; doc.sheets[1].rows[0].kind = 'h1'; eq(Model.numbering(doc, 1).numbers, ['2', '2.1'], 'an h1 row is the chapter heading');
+  doc.settings.numbering = 'continuous'; doc.sheets[1].rows[0]['.kind'] = 'h1'; eq(Model.numbering(doc, 1).numbers, ['2', '2.1'], 'an h1 row is the chapter heading');
 });
 test('model: section counts follow the block structure', () => {
   const doc = sampleDoc(); const s = doc.sheets[0];
   const sec = Model.sectionCounts(doc, s);
-  eq(sec[0], { words: 22, chars: s.rows.filter(r => r.kind !== 'x').reduce((n, r) => n + r.text.length, 0), rows: 5 }, 'h1 owns the whole sheet, x rows excluded');
+  eq(sec[0], { words: 22, chars: s.rows.filter(r => r['.kind'] !== 'x').reduce((n, r) => n + r.text.length, 0), rows: 5 }, 'h1 owns the whole sheet, x rows excluded');
   eq(sec[1], { words: 4 + 6, chars: s.rows[1].text.length + s.rows[2].text.length, rows: 2 }, 'paragraph owns its s row');
   eq(sec[2], null); eq(sec[4], null);
-  ok(!Model.userColumns(doc, s).includes('words'), 'computed columns are system columns');
-  doc.settings.trackCounts = false; Model.addColumn(doc, 0, 'words'); ok(Model.userColumns(doc, s).includes('words'), 'plain column when tracking is off');
+  ok(!Model.userColumns(doc, s).includes('.words'), 'computed columns are system columns');
+  Model.addColumn(doc, 0, 'words'); ok(Model.userColumns(doc, s).includes('words'), 'a plain words column is the user\'s');
+  ok(!Model.validColumnName(s, '.mine').ok && !Model.validColumnName(s, '_x').ok && Model.validColumnName(s, 'kind').ok, 'only dot and underscore prefixes are reserved');
 });
 test('model: table of contents entries and headingFor', () => {
   const doc = sampleDoc();
@@ -179,20 +180,20 @@ test('model: Markdown and indent prefixes', () => {
   eq(Model.detectIndentPrefix('   sub', ''), null, 'trigger off');
 });
 test('model: sectionEnd with indent and s rows', () => {
-  const r = rows('h1', 'p', 's', { kind: 'p', indent: '1' }, { kind: 's', indent: '1' }, { kind: 'p', indent: '2' }, 'p', 'h2', 'p', 'h1', 'p');
+  const r = rows('h1', 'p', 's', { '.kind': 'p', '.indent': '1' }, { '.kind': 's', '.indent': '1' }, { '.kind': 'p', '.indent': '2' }, 'p', 'h2', 'p', 'h1', 'p');
   eq([0, 1, 3, 5, 6, 7, 9].map(i => Model.sectionEnd(r, i)), [9, 6, 6, 6, 7, 9, 11]);
   Model.ensureIds({ sheets: [{ kind: 'chapter', rows: r }] });
   eq(Model.blockOf(r, 1), [1, 6]); eq(Model.blockOf(r, 6), [6, 7]);
 });
 test('model: indent/outdent moves the block and headings ignore it', () => {
   const doc = sampleDoc(); const s = doc.sheets[0];
-  ok(Model.shiftIndent(doc, 0, 1, 1)); eq(s.rows[1].indent, '1'); eq(s.rows[2].indent, '1', 's row follows its paragraph');
+  ok(Model.shiftIndent(doc, 0, 1, 1)); eq(s.rows[1]['.indent'], '1'); eq(s.rows[2]['.indent'], '1', 's row follows its paragraph');
   ok(!Model.shiftIndent(doc, 0, 0, 1), 'heading cannot indent');
-  ok(Model.shiftIndent(doc, 0, 1, -1)); eq(s.rows[1].indent, ''); eq(s.rows[2].indent, '');
-  Model.setIndent(doc, 0, 4, 2); Model.setCell(doc, 0, 4, 'kind', 'h2'); eq(s.rows[4].indent, '', 'becoming a heading clears indent');
+  ok(Model.shiftIndent(doc, 0, 1, -1)); eq(s.rows[1]['.indent'], ''); eq(s.rows[2]['.indent'], '');
+  Model.setIndent(doc, 0, 4, 2); Model.setCell(doc, 0, 4, '.kind', 'h2'); eq(s.rows[4]['.indent'], '', 'becoming a heading clears indent');
 });
 test('model: moveBlock keeps order semantics', () => {
-  const mk = () => ({ sheets: [{ kind: 'chapter', rows: ['a', 'b', 'c', 'd', 'e'].map(t => ({ kind: 'p', text: t })) }] });
+  const mk = () => ({ sheets: [{ kind: 'chapter', rows: ['a', 'b', 'c', 'd', 'e'].map(t => ({ '.kind': 'p', text: t })) }] });
   let d = mk(); eq(Model.moveBlock(d, 0, 1, 2, 4), 2); eq(d.sheets[0].rows.map(r => r.text), ['a', 'd', 'b', 'c', 'e']);
   d = mk(); eq(Model.moveBlock(d, 0, 3, 1, 0), 0); eq(d.sheets[0].rows.map(r => r.text), ['d', 'a', 'b', 'c', 'e']);
   d = mk(); eq(Model.moveBlock(d, 0, 1, 2, 5), 3); eq(d.sheets[0].rows.map(r => r.text), ['a', 'd', 'e', 'b', 'c']);
@@ -200,7 +201,7 @@ test('model: moveBlock keeps order semantics', () => {
 });
 test('model: sibling-aware move targets', () => {
   const doc = Model.newDoc(); const s = doc.sheets[0];
-  const mk = (kind, text, indent = '') => ({ ...Model.emptyRow(s.columns, kind), text, indent });
+  const mk = (kind, text, indent = '') => ({ ...Model.emptyRow(s.columns, kind), text, '.indent': indent });
   s.rows = [mk('h1', 'A'), mk('p', 'a1'), mk('p', 'a2'), mk('p', 'a2x', '1'), mk('h1', 'B'), mk('p', 'b1'), mk('h1', 'C')];
   // move section A down: past sibling B (with its children) -> before C
   eq(Model.siblingMoveTarget(doc, 0, 0, 1), 6);
@@ -218,12 +219,12 @@ test('model: sibling-aware move targets', () => {
 });
 test('model: meta columns and touch', () => {
   const doc = sampleDoc(); doc.settings.trackUpdated = true; doc.settings.trackAuthor = true; Model.ensureMetaColumns(doc);
-  ok(doc.sheets[0].columns.includes('updated') && doc.sheets[1].columns.includes('author'));
+  ok(doc.sheets[0].columns.includes('.updated') && doc.sheets[1].columns.includes('.author'));
   Model.setCell(doc, 0, 1, 'text', 'edited');
-  ok(/^\d{4}-\d\d-\d\d \d\d:\d\d$/.test(doc.sheets[0].rows[1].updated), 'stamp format'); eq(doc.sheets[0].rows[1].author, 'Tester');
-  eq(doc.sheets[0].rows[2].updated, '', 'untouched rows stay empty');
-  ok(!Model.sideColumns(doc, doc.sheets[0]).includes('updated'), 'meta not a side column');
-  doc.settings.trackUpdated = false; ok(Model.sideColumns(doc, doc.sheets[0]).includes('updated'), 'plain column when tracking is off');
+  ok(/^\d{4}-\d\d-\d\d \d\d:\d\d$/.test(doc.sheets[0].rows[1]['.updated']), 'stamp format'); eq(doc.sheets[0].rows[1]['.author'], 'Tester');
+  eq(doc.sheets[0].rows[2]['.updated'], '', 'untouched rows stay empty');
+  ok(!Model.sideColumns(doc, doc.sheets[0]).includes('.updated'), 'meta not a side column');
+  doc.settings.trackUpdated = false; ok(Model.sideColumns(doc, doc.sheets[0]).includes('.updated'), 'plain column when tracking is off');
 });
 test('model: counts, safe file name, empty rows', () => {
   const d = sampleDoc();
@@ -247,7 +248,7 @@ test('export: numbering headings only vs all, "# " in a heading cell is not doub
 });
 test('export: indented rows as paragraphs or nested lists', () => {
   const doc = sampleDoc(); const s = doc.sheets[0];
-  s.rows[4].indent = '1'; s.rows[5].indent = '2';
+  s.rows[4]['.indent'] = '1'; s.rows[5]['.indent'] = '2';
   const p = Exporter.toMarkdown(doc, { scope: 0, sheetTitles: false });
   ok(p.includes('paragraph.\n\nÄäkköset ja ö toimivat.\n\n=SUM'), p);
   const l = Exporter.toMarkdown(doc, { scope: 0, sheetTitles: false, indented: 'lists' });
@@ -305,7 +306,7 @@ test('import: front matter, numbered headings stripped automatically', () => {
 });
 test('import: export → import round trip (lists mode, side blockquotes)', () => {
   const doc = sampleDoc(); const s = doc.sheets[0];
-  s.rows[4].indent = '1'; s.rows[5].indent = '2';
+  s.rows[4]['.indent'] = '1'; s.rows[5]['.indent'] = '2';
   const md = Exporter.toMarkdown(doc, { scope: 0, sheetTitles: false, indented: 'lists', side: { column: 'sources', mode: 'quote' } });
   const r = Importer.parse(md);
   const back = flat(r.rows);
@@ -325,16 +326,16 @@ test('model: clone, delete, insert and move row sets', () => {
   eq(doc.sheets[1].rows[1].sources, 'Smith 2020'); ok(doc.sheets[1].rows[1]._id !== s.rows[0]._id, 'fresh id');
   const d2 = sampleDoc(); const r = d2.sheets[0];
   eq(Model.moveRows(d2, 0, [1, 3], 5), 3);
-  eq(r.rows.map(x => x.kind), ['h1', 's', 'p', 'p', 'x', 'p'], 'rows 1 and 3 moved before original index 5');
+  eq(r.rows.map(x => x['.kind']), ['h1', 's', 'p', 'p', 'x', 'p'], 'rows 1 and 3 moved before original index 5');
   eq(Model.moveRows(d2, 0, [4, 5], 0), 0);
-  eq(r.rows.map(x => x.kind), ['x', 'p', 'h1', 's', 'p', 'p']);
+  eq(r.rows.map(x => x['.kind']), ['x', 'p', 'h1', 's', 'p', 'p']);
 });
 test('model: importRows creates side columns, appends or replaces', () => {
   const doc = sampleDoc();
   const imported = [{ kind: 'h2', indent: '', text: 'New', side: {} }, { kind: 'p', indent: '1', text: 'Body', side: { Examples: 'ex', notes: 'n' } }];
   const at = Model.importRows(doc, 1, imported);
   eq(at, 2); eq(doc.sheets[1].rows.length, 4); ok(doc.sheets[1].columns.includes('Examples'));
-  eq(doc.sheets[1].rows[3].notes, 'n'); eq(doc.sheets[1].rows[3].indent, '1');
+  eq(doc.sheets[1].rows[3].notes, 'n'); eq(doc.sheets[1].rows[3]['.indent'], '1');
   Model.importRows(doc, 1, imported, { replace: true }); eq(doc.sheets[1].rows.length, 2);
   const si = Model.addSheet(doc, 'Fresh'); Model.importRows(doc, si, imported); eq(doc.sheets[si].rows.length, 2, 'placeholder empty row replaced');
 });
@@ -361,23 +362,29 @@ test('html2md: headings, formatting, links, nested lists, Word list paragraphs',
 test('model: status column, targets, colour index', () => {
   const doc = sampleDoc(); const s = doc.sheets[0];
   eq(Model.statusColumn(doc, s), null);
-  Model.addColumn(doc, 0, 'status'); eq(Model.statusColumn(doc, s), 'status');
+  Model.addColumn(doc, 0, 'status');
+  eq(Model.statusColumn(doc, s), null, 'a column named status is just a column until given the role');
+  eq(Model.suggestRole(doc, s, 'status'), 'status', 'but it is suggested');
+  doc.settings.roles.status = 'status'; eq(Model.statusColumn(doc, s), 'status');
+  doc.settings.roles.status = 'gone'; eq(Model.statusColumn(doc, s), null, 'a role pointing at a missing column is ignored');
   ok(Model.colorIndex('todo') >= 0 && Model.colorIndex('todo') < 8 && Model.colorIndex('todo') === Model.colorIndex('TODO'));
-  Model.addColumn(doc, 0, 'target'); s.rows[0].target = '2 000';
-  eq(Model.rowTarget(s, s.rows[0]), 2000); eq(Model.rowTarget(s, s.rows[1]), 0);
+  Model.addColumn(doc, 0, 'Tavoite'); s.rows[0].Tavoite = '2 000';
+  eq(Model.rowTarget(doc, s, s.rows[0]), 0);
+  doc.settings.roles.target = 'Tavoite';
+  eq(Model.rowTarget(doc, s, s.rows[0]), 2000); eq(Model.rowTarget(doc, s, s.rows[1]), 0);
   eq(Model.tocEntries(doc, 0)[0].entries[0].target, 2000);
 });
 
 // ---- blocks, docx, find ----
 test('export: blocks address rows, including side notes and lists', () => {
-  const doc = sampleDoc(); doc.sheets[0].rows[4].indent = '1';
+  const doc = sampleDoc(); doc.sheets[0].rows[4]['.indent'] = '1';
   const b = Exporter.toBlocks(doc, { scope: 0, indented: 'lists', side: { column: 'sources', mode: 'quote' } });
   eq(b.map(x => [x.type, x.i]), [['heading', 0], ['para', 1], ['side', 1], ['para', 4], ['para', 5]]);
   eq(b[2].values, ['Smith 2020', 'Jones 2021']); eq(b[3].list, true); eq(b[3].indent, 1);
   eq(Exporter.blockMarkdown(b[3]), '- Ääkköset ja ö toimivat.');
 });
 test('docx: document xml has heading styles, runs with formatting, side notes', async () => {
-  const doc = sampleDoc(); doc.sheets[0].rows[4].indent = '1';
+  const doc = sampleDoc(); doc.sheets[0].rows[4]['.indent'] = '1';
   const xml = Docx.documentXml(doc, { scope: 'all', side: { column: 'sources', mode: 'quote' } });
   ok(xml.includes('<w:pStyle w:val="Heading1"/>') && xml.includes('Why rows'), 'heading');
   ok(xml.includes('<w:b/></w:rPr><w:t xml:space="preserve">bold</w:t>'), 'bold run');
@@ -425,28 +432,30 @@ test('md: raw html is escaped, links restricted, lists render', () => {
 
 // ---- xlsx ----
 test('xlsx: sortByNo restores order, rows without a number go last', () => {
-  const r = XlsxIO.sortByNo([{ no: '1.2', t: 'c' }, { no: '', t: 'new1' }, { no: '1.10', t: 'e' }, { no: '1', t: 'a' }, { no: '1.1', t: 'b' }, { no: 'x', t: 'new2' }, { no: '1.2.1', t: 'd' }]);
+  const r = XlsxIO.sortByNo([{ '.no': '1.2', t: 'c' }, { '.no': '', t: 'new1' }, { '.no': '1.10', t: 'e' }, { '.no': '1', t: 'a' }, { '.no': '1.1', t: 'b' }, { '.no': 'x', t: 'new2' }, { '.no': '1.2.1', t: 'd' }]);
   eq(r.map(x => x.t), ['a', 'b', 'c', 'd', 'e', 'new1', 'new2']);
 });
 test('xlsx: save then load preserves rows, columns, settings, order; meta columns last', async () => {
   const doc = sampleDoc(); doc.settings.trackUpdated = true; Model.ensureMetaColumns(doc);
-  doc.settings.view = { mode: 'grid', sheet: 'Body', row: 1, toc: 'all', side: false, hidden: ['notes'], counts: false, gridHidden: ['sources', 'indent'] };
+  doc.settings.view = { mode: 'grid', sheet: 'Body', row: 1, toc: 'all', side: false, hidden: ['notes'], counts: false, gridHidden: ['sources', '.indent'] };
   doc.settings.widths = { text: 700, notes: 140 };
-  Model.moveColumn(doc, 0, 'updated', -1); // put it before "sources" in the model; the file must still end with it
-  doc.sheets[0].rows[4].indent = '1';
+  doc.settings.roles = { status: 'notes', target: '' };
+  Model.moveColumn(doc, 0, '.updated', -1); // put it before "sources" in the model; the file must still end with it
+  doc.sheets[0].rows[4]['.indent'] = '1';
   const buf = await XlsxIO.save(doc, new Map());
   const { doc: d2, warnings } = await XlsxIO.load(buf);
   eq(warnings, []);
   eq(d2.sheets.map(s => s.name), ['Intro', 'Body']);
-  eq(d2.sheets[0].columns, ['no', 'kind', 'indent', 'text', 'notes', 'sources', 'words', 'chars', 'updated'], 'computed counts before meta columns');
+  eq(d2.sheets[0].columns, ['.no', '.kind', '.indent', 'text', 'notes', 'sources', '.words', '.chars', '.updated'], 'computed counts before meta columns');
   eq(d2.sheets[0].rows.map(r => r.text), doc.sheets[0].rows.map(r => r.text));
-  eq(d2.sheets[0].rows.map(r => r.kind), ['h1', 'p', 's', 'x', 'p', 'p']);
-  eq(d2.sheets[0].rows[4].indent, '1');
+  eq(d2.sheets[0].rows.map(r => r['.kind']), ['h1', 'p', 's', 'x', 'p', 'p']);
+  eq(d2.sheets[0].rows[4]['.indent'], '1');
   eq(d2.sheets[0].rows[1].sources, 'Smith 2020');
   eq(d2.mainColumn, 'text'); eq(d2.settings.title, 'Test workbook: draft/1'); eq(d2.settings.author, 'Tester');
   eq(d2.settings.numbering, 'continuous'); eq(d2.settings.trackUpdated, true); eq(d2.settings.trackAuthor, false);
   eq(d2.settings.freezeColumns, 1); eq(d2.settings.countColumns, []);
-  eq(d2.settings.view, { mode: 'grid', sheet: 'Body', row: 1, toc: 'all', side: false, hidden: ['notes'], counts: false, gridHidden: ['sources', 'indent'] }, 'display state round-trips');
+  eq(d2.settings.roles, { status: 'notes', target: '' }, 'column roles round-trip');
+  eq(d2.settings.view, { mode: 'grid', sheet: 'Body', row: 1, toc: 'all', side: false, hidden: ['notes'], counts: false, gridHidden: ['sources', '.indent'] }, 'display state round-trips');
   eq(d2.settings.widths, { text: 700, notes: 140 }, 'column widths round-trip');
   eq(Model.columnWidth(d2, 'text'), 700); eq(Model.columnWidth(d2, 'sources'), 200, 'default width');
   eq(d2.settings.extra, { custom_key: ['custom value', 'kept by the app'] });
@@ -479,9 +488,9 @@ test('xlsx: Excel-edited chapter: sorted by another column, new rows without no/
   const { doc, sources, hasSettings } = await XlsxIO.load(buf);
   eq(hasSettings, false);
   eq(doc.sheets.map(s => s.kind), ['chapter', 'data']);
-  eq(doc.sheets[0].columns, ['no', 'Text', 'kind', 'indent', 'Notes', 'words', 'chars'], 'existing columns keep their order; missing ones are added');
+  eq(doc.sheets[0].columns, ['.no', 'Text', '.kind', '.indent', 'Notes', '.words', '.chars'], 'legacy bare names migrate to dotted, order kept, missing ones added');
   eq(doc.sheets[0].rows.map(r => r.Text), ['Title row', 'First', 'Second', 'rich text', 'Added in Excel']);
-  eq(doc.sheets[0].rows.map(r => r.kind), ['h1', 'p', 'p', 'p', 'p']);
+  eq(doc.sheets[0].rows.map(r => r['.kind']), ['h1', 'p', 'p', 'p', 'p']);
   eq(doc.sheets[0].rows[3].Notes, '42');
   eq(doc.mainColumn, 'Text');
   const buf2 = await XlsxIO.save(doc, sources);
@@ -502,7 +511,7 @@ test('xlsx: plain spreadsheet without a text column is imported by its longest c
   const buf = await wb.xlsx.writeBuffer();
   const { doc, warnings } = await XlsxIO.load(buf);
   eq(doc.mainColumn, 'Argument'); eq(doc.sheets[0].kind, 'chapter'); eq(doc.sheets[0].rows.length, 2);
-  eq(doc.sheets[0].columns, ['no', 'kind', 'indent', 'id', 'Argument', 'Src', 'words', 'chars']);
+  eq(doc.sheets[0].columns, ['.no', '.kind', '.indent', 'id', 'Argument', 'Src', '.words', '.chars']);
   ok(warnings.length === 1 && /Argument/.test(warnings[0]), warnings.join('|'));
 });
 test('xlsx: empty rows are not written', async () => {

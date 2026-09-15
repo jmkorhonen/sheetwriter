@@ -17,10 +17,12 @@ const XlsxIO = (() => {
     freeze_columns: 'How many leading columns stay frozen in the Grid view and in Excel',
     count_columns: 'Columns whose words and characters the status bar counts (empty = the main column)',
     column_widths: 'Grid column widths in pixels, name:px pairs; also used for the Excel column widths',
-    word_target: 'Word target for the whole workbook (0 = none); per-section targets go in a "target" column on heading rows',
-    track_updated: 'yes/no: keep an "updated" column with the time each row was last edited in SheetWriter',
-    track_author: 'yes/no: keep an "author" column with the author who last edited each row in SheetWriter',
-    track_counts: 'yes/no: keep "words" and "chars" columns with per-row counts over the counted columns (written on save, recomputed on load)',
+    word_target: 'Word target for the whole workbook (0 = none); per-section targets go in the target column on heading rows',
+    status_column: 'Column whose values show as coloured chips (any name; set in Settings → Column roles)',
+    target_column: 'Column holding per-section word targets on heading rows (any name; set in Settings → Column roles)',
+    track_updated: 'yes/no: keep an ".updated" column with the time each row was last edited in SheetWriter',
+    track_author: 'yes/no: keep an ".author" column with the author who last edited each row in SheetWriter',
+    track_counts: 'yes/no: keep ".words" and ".chars" columns with per-row counts over the counted columns (written on save, recomputed on load)',
     view_mode: 'Display state when last saved: draft, grid or read',
     view_sheet: 'Sheet that was open when last saved',
     view_row: 'Row (1-based, within that sheet) that was being edited when last saved',
@@ -82,6 +84,8 @@ const XlsxIO = (() => {
         case 'freeze_columns': { const n = parseInt(value, 10); doc.settings.freezeColumns = n >= 0 ? Math.min(n, 10) : 1; break; }
         case 'count_columns': doc.settings.countColumns = value.split(/[,;]/).map(s => s.trim()).filter(Boolean); break;
         case 'word_target': { const n = parseInt(value.replace(/\s/g, ''), 10); doc.settings.wordTarget = n > 0 ? n : 0; break; }
+        case 'status_column': doc.settings.roles.status = value.trim(); break;
+        case 'target_column': doc.settings.roles.target = value.trim(); break;
         case 'column_widths': {
           const w = {};
           value.split(/[,;]/).forEach(p => { const m = /^\s*(.+?)\s*:\s*(\d+)\s*$/.exec(p); if (m && +m[2] > 0) w[m[1]] = +m[2]; });
@@ -127,6 +131,8 @@ const XlsxIO = (() => {
       ['count_columns', (doc.settings.countColumns || []).join(', ')],
       ['column_widths', Object.entries(doc.settings.widths || {}).map(([k, v]) => `${k}:${v}`).join(', ')],
       ['word_target', String(doc.settings.wordTarget || 0)],
+      ['status_column', (doc.settings.roles && doc.settings.roles.status) || ''],
+      ['target_column', (doc.settings.roles && doc.settings.roles.target) || ''],
       ['track_updated', doc.settings.trackUpdated ? 'yes' : 'no'],
       ['track_author', doc.settings.trackAuthor ? 'yes' : 'no'],
       ['track_counts', doc.settings.trackCounts ? 'yes' : 'no'],
@@ -177,7 +183,7 @@ const XlsxIO = (() => {
   function sortByNo(rows) {
     const parse = v => { const s = String(v || '').trim(); return /^\d+(\.\d+)*$/.test(s) ? s.split('.').map(Number) : null; };
     const withNo = [], without = [];
-    rows.forEach((r, k) => { const p = parse(r.no); (p ? withNo : without).push({ r, k, p }); });
+    rows.forEach((r, k) => { const p = parse(r['.no']); (p ? withNo : without).push({ r, k, p }); });
     if (!withNo.length) return rows;
     withNo.sort((a, b) => {
       const n = Math.max(a.p.length, b.p.length);
@@ -201,7 +207,9 @@ const XlsxIO = (() => {
     for (let i = 0; i < headers.length; i++) {
       if (!headers[i]) headers[i] = 'col' + (i + 1);
       const low = headers[i].toLowerCase();
-      if (Model.RESERVED.includes(low) || Model.META.includes(low) || Model.COMPUTED.includes(low)) headers[i] = low;
+      const sys = [...Model.RESERVED, ...Model.META, ...Model.COMPUTED];
+      if (sys.includes(low)) headers[i] = low; // .kind etc.
+      else if (sys.includes('.' + low) && !headers.some(h => h.toLowerCase() === '.' + low)) headers[i] = '.' + low; // files written before 0.10: kind -> .kind
       if (low === mainLower) headers[i] = doc.mainColumn;
     }
     const columns = dedupeColumns(headers);
@@ -213,17 +221,17 @@ const XlsxIO = (() => {
       columns.forEach((c, i) => {
         const t = cellText(row.getCell(i + 1).value);
         obj[c] = t;
-        if (c !== 'no' && t.trim()) any = true;
+        if (c !== '.no' && t.trim()) any = true;
       });
       if (any) rows.push(obj);
     }
-    if (columns.includes('no')) rows = sortByNo(rows);
-    if (!columns.includes('kind')) columns.unshift('kind');
-    if (!columns.includes('no')) columns.unshift('no');
-    if (!columns.includes('indent')) columns.splice(columns.indexOf('kind') + 1, 0, 'indent');
+    if (columns.includes('.no')) rows = sortByNo(rows);
+    if (!columns.includes('.kind')) columns.unshift('.kind');
+    if (!columns.includes('.no')) columns.unshift('.no');
+    if (!columns.includes('.indent')) columns.splice(columns.indexOf('.kind') + 1, 0, '.indent');
     rows.forEach(r => {
-      r.kind = Model.normKind(r.kind); r.no = '';
-      const ind = parseInt(r.indent, 10); r.indent = ind > 0 && !Model.isHeading(r.kind) ? String(ind) : '';
+      r['.kind'] = Model.normKind(r['.kind']); r['.no'] = '';
+      const ind = parseInt(r['.indent'], 10); r['.indent'] = ind > 0 && !Model.isHeading(r['.kind']) ? String(ind) : '';
       for (const c of columns) if (r[c] == null) r[c] = '';
     });
     if (!rows.length) rows.push(Model.emptyRow(columns));
@@ -298,11 +306,11 @@ const XlsxIO = (() => {
   function widthFor(col, doc) {
     const px = doc.settings.widths && doc.settings.widths[col];
     if (px > 0) return Math.max(4, Math.round(px / 7)); // Excel width unit ≈ 7 px at the default font
-    if (col === 'no') return 8;
-    if (col === 'kind') return 6;
-    if (col === 'indent') return 7;
-    if (col === 'updated') return 17;
-    if (col === 'author' && doc.settings.trackAuthor) return 16;
+    if (col === '.no') return 8;
+    if (col === '.kind') return 6;
+    if (col === '.indent') return 7;
+    if (col === '.updated') return 17;
+    if (col === '.author' && doc.settings.trackAuthor) return 16;
     if (Model.isComputed(doc, col)) return 7;
     if (col === doc.mainColumn) return 80;
     return 32;
@@ -363,18 +371,18 @@ const XlsxIO = (() => {
         const vals = {};
         const rc = doc.settings.trackCounts ? Model.rowCounts(doc, s, r) : null;
         for (const c of columns) {
-          if (c === 'no') vals[c] = num.numbers[i];
-          else if (c === 'indent') { const n = Model.indentOf(r); vals[c] = n ? n : ''; }
-          else if (rc && c === 'words') vals[c] = rc.words;
-          else if (rc && c === 'chars') vals[c] = rc.chars;
+          if (c === '.no') vals[c] = num.numbers[i];
+          else if (c === '.indent') { const n = Model.indentOf(r); vals[c] = n ? n : ''; }
+          else if (rc && c === '.words') vals[c] = rc.words;
+          else if (rc && c === '.chars') vals[c] = rc.chars;
           else vals[c] = String(r[c] ?? '');
         }
         const row = ws.addRow(vals);
-        const hl = SheetNumbering.headingLevel(r.kind);
+        const hl = SheetNumbering.headingLevel(r['.kind']);
         row.eachCell({ includeEmpty: true }, cell => { cell.alignment = { wrapText: true, vertical: 'top' }; });
         if (hl) row.font = { bold: true, size: Math.max(11, 15 - hl), italic: hl >= 3 };
-        else if (r.kind === 'x') row.font = { italic: true, color: { argb: 'FF8A8A8A' } };
-        const ind = num.indents[i] + (r.kind === 's' ? 1 : 0);
+        else if (r['.kind'] === 'x') row.font = { italic: true, color: { argb: 'FF8A8A8A' } };
+        const ind = num.indents[i] + (r['.kind'] === 's' ? 1 : 0);
         if (!hl && ind) row.getCell(doc.mainColumn).alignment = { wrapText: true, vertical: 'top', indent: ind };
         for (const c of columns) if (Model.isMeta(doc, c) || Model.isComputed(doc, c)) row.getCell(c).font = { color: { argb: 'FF8A8A8A' }, size: 9 };
       });

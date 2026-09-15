@@ -13,18 +13,23 @@ Drafting argument by argument in a spreadsheet is useful: you can reorder, annot
 
 ## Workbook conventions
 
+Columns whose names start with a dot belong to SheetWriter. Every other column is yours to name, and the ones the app treats specially are chosen by role in Settings, not by name.
+
 | Column | Meaning |
 |---|---|
-| `text` | The main text column. Any sheet with this column is a chapter. Renameable in Settings. |
-| `kind` | `h1`–`h4` heading, `p` paragraph, `s` sentence continuing the previous paragraph, `x` excluded from export. Empty means `p`. |
-| `indent` | Nesting level of a body row: 0, 1, 2 … |
-| `no` | Hierarchical number, written by the app on save. Used to restore the order if the sheet was sorted in Excel, then recomputed. |
-| `words`, `chars` | Per-row counts over the counted columns, written on save and recomputed on load. Switchable off in Settings. |
-| `updated`, `author` | Optional, maintained by the app when switched on in Settings. Always the last columns in the file, after `words` and `chars`. |
-| anything else | Yours: `notes`, `sources`, `examples`, `status`… |
+| `.kind` | `h1`–`h4` heading, `p` paragraph, `s` sentence continuing the previous paragraph, `x` excluded from export. Empty means `p`. |
+| `.indent` | Nesting level of a body row: 0, 1, 2 … |
+| `.no` | Hierarchical number, written by the app on save. Used to restore the order if the sheet was sorted in Excel, then recomputed. |
+| `.words`, `.chars` | Per-row counts over the counted columns, written on save and recomputed on load. Switchable off in Settings. |
+| `.updated`, `.author` | Optional, maintained by the app when switched on in Settings. Always the last columns in the file. |
+| main text (★) | Your text column, `text` by default; any sheet with it is a chapter. |
+| status (●), target (◎) | Optional roles for two of your columns: coloured chips, and per-section word targets on heading rows. |
+| anything else | Yours: `notes`, `sources`, `examples`… |
+
+Files written before 0.10 used bare names (`kind`, `no`, …); they load as before and are written with the dotted names on the next save.
 
 - Sheets without a `text` column are **data sheets**: shown read-only in the app and written back unchanged.
-- A plain spreadsheet without a `text` column is imported using its longest text column; `no`, `kind` and `indent` are added.
+- A plain spreadsheet without a `text` column is imported using its longest text column; `.no`, `.kind` and `.indent` are added.
 - Rows added in Excel without a number go to the end of the chapter, as paragraphs.
 - The `_sheetwriter` sheet holds title, author, main column, numbering and tracking settings, dates, and links to the editor. It is protected against accidental edits (Review → Unprotect Sheet in Excel to change it there). Rows you add to it are kept.
 
@@ -63,7 +68,7 @@ Press `?` in the toolbar or F1 for the full list.
 - **Find and replace** (Ctrl+F, Ctrl+H): across all sheets and columns or narrowed down, with match case; F3 steps through matches, Replace all is one undo step.
 - **Export Word** (Ctrl+E → Download .docx): real heading styles, bold, italic, code and links from the Markdown, indented rows, side columns as small notes. Written by a small built-in OOXML writer, no Word needed.
 - **Safety**: saving warns if the file changed on disk since it was opened; a snapshot is kept in the browser every 5 minutes (Recent ▾ → Recover an autosave…); and Settings can write an autosave copy to a second workbook such as `name_AUTOSAVE.xlsx` at an interval (Edge and Chrome).
-- **Status and targets**: a `status` column shows coloured chips on cards and tints Grid cells; a `target` column with a number on a heading row sets a word target for that section, and Settings holds one for the workbook. The Filter button hides rows by text or `column:value` in Draft and Grid.
+- **Status and targets**: the column given the status role shows coloured chips on cards and tints Grid cells; the target column's number on a heading row sets a word target for that section, and Settings holds one for the workbook. The Filter button hides rows by text or `column:value` in Draft and Grid.
 - **Formatting keys**: Ctrl+B, Ctrl+I and Ctrl+K wrap the selection in Markdown bold, italic or a link. Pasting rich text from Word or a browser into the import dialog converts it to Markdown.
 - **Appearance**: light, dark or follow the system, in Settings. Read view has a print stylesheet.
 - **Export Markdown** (Ctrl+E): any column as one document, whole workbook or one chapter, with the same options plus a side column as blockquotes or hidden comments.

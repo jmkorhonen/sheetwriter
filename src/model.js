@@ -9,16 +9,16 @@
  *     {name, kind:'data', cells:[[...]]}
  *   ]
  * }
- * Reserved columns: "no" (computed numbering, written on save), "kind", "indent".
- * Meta columns "updated" and "author" are maintained by the app when tracking is on.
+ * System columns start with a dot: .no (computed numbering, written on save), .kind, .indent,
+ * .words/.chars (computed) and .updated/.author (meta, maintained when tracking is on). Everything else is the user's.
  */
 const Model = (() => {
-  const RESERVED = ['no', 'kind', 'indent'];
-  const META = ['updated', 'author'];
-  const COMPUTED = ['words', 'chars']; // per-row counts, written on save like "no", recomputed on load
+  const RESERVED = ['.no', '.kind', '.indent'];
+  const META = ['.updated', '.author'];
+  const COMPUTED = ['.words', '.chars']; // per-row counts, written on save like "no", recomputed on load
   const KINDS = ['h1', 'h2', 'h3', 'h4', 'p', 's', 'x'];
   const KIND_ORDER = ['h1', 'h2', 'h3', 'h4', 'p', 's']; // promote/demote ladder
-  const DEFAULT_COLUMNS = ['no', 'kind', 'indent', 'text', 'notes', 'sources'];
+  const DEFAULT_COLUMNS = ['.no', '.kind', '.indent', 'text', 'notes', 'sources'];
 
   function normKind(k) {
     k = String(k == null ? '' : k).trim().toLowerCase();
@@ -40,8 +40,8 @@ const Model = (() => {
   function emptyRow(columns, kind = 'p', indent = 0) {
     const r = {};
     for (const c of columns) r[c] = '';
-    r.kind = kind;
-    r.indent = indent ? String(indent) : '';
+    r['.kind'] = kind;
+    r['.indent'] = indent ? String(indent) : '';
     r._id = newId();
     return r;
   }
@@ -64,14 +64,14 @@ const Model = (() => {
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
   }
   function isMeta(doc, col) {
-    return (col === 'updated' && !!doc.settings.trackUpdated) || (col === 'author' && !!doc.settings.trackAuthor);
+    return (col === '.updated' && !!doc.settings.trackUpdated) || (col === '.author' && !!doc.settings.trackAuthor);
   }
   function isComputed(doc, col) { return !!doc.settings.trackCounts && COMPUTED.includes(col); }
   const isSystem = (doc, col) => RESERVED.includes(col) || isMeta(doc, col) || isComputed(doc, col);
   /** Mark a row as edited: maintains updated/author when tracking is on. */
   function touch(doc, sheet, row) {
-    if (doc.settings.trackUpdated) { if (!sheet.columns.includes('updated')) addColumnTo(sheet, 'updated'); row.updated = stamp(); }
-    if (doc.settings.trackAuthor) { if (!sheet.columns.includes('author')) addColumnTo(sheet, 'author'); row.author = doc.settings.author || ''; }
+    if (doc.settings.trackUpdated) { if (!sheet.columns.includes('.updated')) addColumnTo(sheet, '.updated'); row['.updated'] = stamp(); }
+    if (doc.settings.trackAuthor) { if (!sheet.columns.includes('.author')) addColumnTo(sheet, '.author'); row['.author'] = doc.settings.author || ''; }
   }
   function addColumnTo(sheet, name, at) {
     if (sheet.columns.includes(name)) return;
@@ -83,9 +83,9 @@ const Model = (() => {
   function ensureMetaColumns(doc) {
     for (const s of doc.sheets) {
       if (s.kind !== 'chapter') continue;
-      if (doc.settings.trackCounts) { addColumnTo(s, 'words'); addColumnTo(s, 'chars'); }
-      if (doc.settings.trackUpdated) addColumnTo(s, 'updated');
-      if (doc.settings.trackAuthor) addColumnTo(s, 'author');
+      if (doc.settings.trackCounts) { addColumnTo(s, '.words'); addColumnTo(s, '.chars'); }
+      if (doc.settings.trackUpdated) addColumnTo(s, '.updated');
+      if (doc.settings.trackAuthor) addColumnTo(s, '.author');
     }
   }
 
@@ -95,20 +95,20 @@ const Model = (() => {
   function sectionEnd(rows, i) {
     const r = rows[i];
     if (!r) return i + 1;
-    const level = SheetNumbering.headingLevel(r.kind);
+    const level = SheetNumbering.headingLevel(r['.kind']);
     const n = rows.length;
     let j = i + 1;
     if (level) {
-      while (j < n) { const l = SheetNumbering.headingLevel(rows[j].kind); if (l && l <= level) break; j++; }
+      while (j < n) { const l = SheetNumbering.headingLevel(rows[j]['.kind']); if (l && l <= level) break; j++; }
       return j;
     }
-    const k = indentOf(r), kind = normKind(r.kind);
+    const k = indentOf(r), kind = normKind(r['.kind']);
     while (j < n) {
       const rj = rows[j];
-      if (SheetNumbering.headingLevel(rj.kind)) break;
+      if (SheetNumbering.headingLevel(rj['.kind'])) break;
       const kj = indentOf(rj);
       if (kj > k) { j++; continue; }
-      if (kj === k && normKind(rj.kind) === 's' && kind !== 's') { j++; continue; }
+      if (kj === k && normKind(rj['.kind']) === 's' && kind !== 's') { j++; continue; }
       break;
     }
     return j;
@@ -117,9 +117,9 @@ const Model = (() => {
   function sectionEnds(rows) {
     const n = rows.length;
     const end = new Array(n);
-    const lvl = rows.map(r => SheetNumbering.headingLevel(r.kind));
+    const lvl = rows.map(r => SheetNumbering.headingLevel(r['.kind']));
     const ind = rows.map(r => indentOf(r));
-    const knd = rows.map(r => normKind(r.kind));
+    const knd = rows.map(r => normKind(r['.kind']));
     const owns = (i, j) => {
       if (lvl[i]) return !lvl[j] || lvl[j] > lvl[i];
       if (lvl[j]) return false;
@@ -166,9 +166,9 @@ const Model = (() => {
   function columnWidth(doc, col) {
     const w = doc.settings.widths && doc.settings.widths[col];
     if (w > 0) return w;
-    if (col === 'no') return 64;
-    if (col === 'kind') return 56;
-    if (col === 'indent') return 48;
+    if (col === '.no') return 64;
+    if (col === '.kind') return 56;
+    if (col === '.indent') return 48;
     if (col === doc.mainColumn) return 480;
     if (isComputed(doc, col)) return 60;
     if (isMeta(doc, col)) return 130;
@@ -183,16 +183,16 @@ const Model = (() => {
     return { name, kind: 'chapter', columns: cols, rows: [emptyRow(cols)] };
   }
   function ensureReserved(columns) {
-    if (!columns.includes('indent')) { const k = columns.indexOf('kind'); columns.splice(k >= 0 ? k + 1 : 0, 0, 'indent'); }
-    if (!columns.includes('kind')) columns.unshift('kind');
-    if (!columns.includes('no')) columns.unshift('no');
+    if (!columns.includes('.indent')) { const k = columns.indexOf('.kind'); columns.splice(k >= 0 ? k + 1 : 0, 0, '.indent'); }
+    if (!columns.includes('.kind')) columns.unshift('.kind');
+    if (!columns.includes('.no')) columns.unshift('.no');
     return columns;
   }
   function newDoc() {
     return {
       version: 1,
       mainColumn: 'text',
-      settings: { numbering: 'continuous', title: '', author: '', description: '', created: new Date().toISOString(), trackUpdated: false, trackAuthor: false, trackCounts: true, freezeColumns: 1, countColumns: [], widths: {}, wordTarget: 0, view: defaultView(), extra: {} },
+      settings: { numbering: 'continuous', title: '', author: '', description: '', created: new Date().toISOString(), trackUpdated: false, trackAuthor: false, trackCounts: true, freezeColumns: 1, countColumns: [], widths: {}, wordTarget: 0, roles: { status: '', target: '' }, view: defaultView(), extra: {} },
       sheets: [newChapter('Chapter 1')],
     };
   }
@@ -234,7 +234,7 @@ const Model = (() => {
     const rows = sheet.rows, n = rows.length;
     const pw = [0], pc = [0], pr = [0];
     for (let i = 0; i < n; i++) {
-      const x = normKind(rows[i].kind) === 'x';
+      const x = normKind(rows[i]['.kind']) === 'x';
       const rc = x ? { words: 0, chars: 0 } : rowCounts(doc, sheet, rows[i]);
       pw.push(pw[i] + rc.words); pc.push(pc[i] + rc.chars); pr.push(pr[i] + (x ? 0 : 1));
     }
@@ -245,12 +245,23 @@ const Model = (() => {
       return { words: pw[end] - pw[i], chars: pc[end] - pc[i], rows: pr[end] - pr[i] };
     });
   }
-  /** Column used for status chips and colouring: the first of these that exists. */
-  function statusColumn(doc, sheet) { return ['status', 'tag', 'tags', 'state'].find(c => sheet.columns.includes(c)) || null; }
+  // Column roles are explicit settings (roles.status, roles.target); names only serve as suggestions.
+  const ROLE_NAMES = { status: ['status', 'tag', 'tags', 'state', 'tila'], target: ['target', 'words_target', 'word_target', 'tavoite'] };
+  function roleColumn(doc, sheet, role) {
+    const c = doc.settings.roles && doc.settings.roles[role];
+    return c && sheet.columns.includes(c) ? c : null;
+  }
+  /** A column whose name suggests the role, for Settings to propose. */
+  function suggestRole(doc, sheet, role) {
+    const names = ROLE_NAMES[role] || [];
+    return userColumns(doc, sheet).find(c => names.includes(c.toLowerCase())) || null;
+  }
+  /** Column used for status chips and colouring. */
+  function statusColumn(doc, sheet) { return roleColumn(doc, sheet, 'status'); }
   /** Column holding per-section word targets (a number on a heading row). */
-  function targetColumn(sheet) { return ['target', 'words_target', 'word_target'].find(c => sheet.columns.includes(c)) || null; }
-  function rowTarget(sheet, row) {
-    const c = targetColumn(sheet); if (!c) return 0;
+  function targetColumn(doc, sheet) { return roleColumn(doc, sheet, 'target'); }
+  function rowTarget(doc, sheet, row) {
+    const c = targetColumn(doc, sheet); if (!c) return 0;
     const n = parseInt(String(row[c] || '').replace(/\s/g, ''), 10);
     return n > 0 ? n : 0;
   }
@@ -269,9 +280,9 @@ const Model = (() => {
       const sec = sectionCounts(doc, s);
       const entries = [];
       s.rows.forEach((r, i) => {
-        if (!SheetNumbering.headingLevel(r.kind)) return;
+        if (!SheetNumbering.headingLevel(r['.kind'])) return;
         const text = String(r[doc.mainColumn] || '').replace(/^#{1,6}[ \t]+/, '').trim();
-        entries.push({ si, i, level: num.levels[i], number: num.numbers[i], text: text || '(untitled)', words: sec[i] ? sec[i].words : rowCounts(doc, s, r).words, target: rowTarget(s, r) });
+        entries.push({ si, i, level: num.levels[i], number: num.numbers[i], text: text || '(untitled)', words: sec[i] ? sec[i].words : rowCounts(doc, s, r).words, target: rowTarget(doc, s, r) });
       });
       out.push({ si, name: s.name, entries });
     });
@@ -280,7 +291,7 @@ const Model = (() => {
   /** Index of the heading whose section contains row i (i itself if it is a heading), or null. */
   function headingFor(rows, i) {
     for (let j = i; j >= 0; j--) {
-      if (SheetNumbering.headingLevel(rows[j].kind) && (j === i || sectionEnd(rows, j) > i)) return j;
+      if (SheetNumbering.headingLevel(rows[j]['.kind']) && (j === i || sectionEnd(rows, j) > i)) return j;
     }
     return null;
   }
@@ -296,7 +307,7 @@ const Model = (() => {
     const c = { rows: 0, words: 0, chars: 0 };
     if (sheet.kind !== 'chapter') return c;
     for (const r of sheet.rows) {
-      if (normKind(r.kind) === 'x') continue;
+      if (normKind(r['.kind']) === 'x') continue;
       const rc = rowCounts(doc, sheet, r);
       c.rows++; c.words += rc.words; c.chars += rc.chars;
     }
@@ -349,7 +360,7 @@ const Model = (() => {
     const text = row[main] || '';
     const a = text.slice(0, caret), b = text.slice(caret);
     row[main] = a.replace(/\s+$/, '');
-    const nr = emptyRow(s.columns, isHeading(row.kind) ? 'p' : row.kind, isHeading(row.kind) ? 0 : indentOf(row));
+    const nr = emptyRow(s.columns, isHeading(row['.kind']) ? 'p' : row['.kind'], isHeading(row['.kind']) ? 0 : indentOf(row));
     nr[main] = b.replace(/^\s+/, '');
     s.rows.splice(i + 1, 0, nr);
     touch(doc, s, row); touch(doc, s, nr);
@@ -374,19 +385,19 @@ const Model = (() => {
     const s = doc.sheets[si];
     if (!s.rows[i]) return;
     const row = s.rows[i];
-    const v = col === 'kind' ? normKind(val) : String(val);
+    const v = col === '.kind' ? normKind(val) : String(val);
     if (row[col] === v) return;
     row[col] = v;
-    if (col === 'kind' && isHeading(v)) row.indent = '';
+    if (col === '.kind' && isHeading(v)) row['.indent'] = '';
     touch(doc, s, row);
   }
   function setIndent(doc, si, i, indent) {
     const s = doc.sheets[si]; const row = s.rows[i];
-    if (!row || isHeading(row.kind)) return false;
+    if (!row || isHeading(row['.kind'])) return false;
     indent = Math.max(0, Math.min(8, indent | 0));
     const v = indent ? String(indent) : '';
-    if (row.indent === v) return false;
-    row.indent = v;
+    if (row['.indent'] === v) return false;
+    row['.indent'] = v;
     touch(doc, s, row);
     return true;
   }
@@ -394,14 +405,14 @@ const Model = (() => {
   function shiftIndent(doc, si, i, dir) {
     const s = doc.sheets[si]; const rows = s.rows;
     const row = rows[i];
-    if (!row || isHeading(row.kind)) return false;
+    if (!row || isHeading(row['.kind'])) return false;
     const cur = indentOf(row);
     if (dir < 0 && cur === 0) return false;
     const [start, end] = blockOf(rows, i);
     for (let k = start; k < end; k++) {
-      if (isHeading(rows[k].kind)) continue;
+      if (isHeading(rows[k]['.kind'])) continue;
       const v = Math.max(0, indentOf(rows[k]) + dir);
-      rows[k].indent = v ? String(v) : '';
+      rows[k]['.indent'] = v ? String(v) : '';
     }
     touch(doc, s, row);
     return true;
@@ -409,20 +420,20 @@ const Model = (() => {
   function cycleKind(doc, si, i, dir = 1) {
     const s = doc.sheets[si]; const row = s.rows[i];
     const order = ['p', 'h1', 'h2', 'h3', 'h4', 's', 'x'];
-    const k = order.indexOf(normKind(row.kind));
-    row.kind = order[(k + dir + order.length) % order.length];
-    if (isHeading(row.kind)) row.indent = '';
+    const k = order.indexOf(normKind(row['.kind']));
+    row['.kind'] = order[(k + dir + order.length) % order.length];
+    if (isHeading(row['.kind'])) row['.indent'] = '';
     touch(doc, s, row);
   }
   /** dir -1 = promote (towards h1), +1 = demote (towards s) */
   function shiftKind(doc, si, i, dir) {
     const s = doc.sheets[si]; const row = s.rows[i];
-    const cur = normKind(row.kind);
+    const cur = normKind(row['.kind']);
     let k = KIND_ORDER.indexOf(cur);
     if (k < 0) k = KIND_ORDER.indexOf('p') - dir; // x → p either way
     k = Math.max(0, Math.min(KIND_ORDER.length - 1, k + dir));
-    row.kind = KIND_ORDER[k];
-    if (isHeading(row.kind)) row.indent = '';
+    row['.kind'] = KIND_ORDER[k];
+    if (isHeading(row['.kind'])) row['.indent'] = '';
     touch(doc, s, row);
   }
 
@@ -431,7 +442,7 @@ const Model = (() => {
     name = String(name || '').trim();
     if (!name) return { ok: false, reason: 'Column name is empty.' };
     const low = name.toLowerCase();
-    if (RESERVED.includes(low) || META.includes(low) || COMPUTED.includes(low)) return { ok: false, reason: `"${name}" is reserved for SheetWriter's own columns.` };
+    if (name.startsWith('.') || name.startsWith('_')) return { ok: false, reason: 'Names starting with a dot are SheetWriter\'s own columns, and names starting with an underscore are not allowed.' };
     if (!allowExisting && sheet.columns.some(c => c.toLowerCase() === name.toLowerCase())) return { ok: false, reason: `Column "${name}" already exists.` };
     return { ok: true, name };
   }
@@ -600,7 +611,7 @@ const Model = (() => {
     plain.forEach(r => Object.keys(r).forEach(c => { if (!c.startsWith('_') && !RESERVED.includes(c) && !s.columns.includes(c) && String(r[c] || '').trim()) needed.add(c); }));
     for (const c of needed) addColumn(doc, si, c);
     const made = plain.map(r => {
-      const row = emptyRow(s.columns, normKind(r.kind), parseInt(r.indent, 10) || 0);
+      const row = emptyRow(s.columns, normKind(r['.kind']), parseInt(r['.indent'], 10) || 0);
       for (const c of s.columns) if (!RESERVED.includes(c) && r[c] != null) row[c] = String(r[c]);
       touch(doc, s, row);
       return row;
@@ -663,7 +674,7 @@ const Model = (() => {
   return {
     RESERVED, META, COMPUTED, KINDS, DEFAULT_COLUMNS, normKind, isHeading, indentOf, emptyRow, newChapter, newDoc, ensureIds, newId,
     detectKindPrefix, detectIndentPrefix, stamp, isMeta, isComputed, isSystem, touch, ensureMetaColumns,
-    sectionEnd, sectionEnds, isCollapsible, blockOf, moveBlock, siblingMoveTarget, statusColumn, targetColumn, rowTarget, colorIndex,
+    sectionEnd, sectionEnds, isCollapsible, blockOf, moveBlock, siblingMoveTarget, statusColumn, targetColumn, rowTarget, roleColumn, suggestRole, colorIndex,
     chapterSheets, chapterIndex, numbering, countColumns, rowCounts, sectionCounts, userColumns, sideColumns, rowIsEmpty, tocEntries, headingFor,
     wordCount, charCount, sheetCounts, docCounts, sheetWords, docWords, safeFileName,
     addRow, deleteRow, moveRow, duplicateRow, splitRow, mergeRow, setCell, setIndent, shiftIndent, cycleKind, shiftKind,

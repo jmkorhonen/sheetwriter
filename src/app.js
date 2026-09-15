@@ -473,13 +473,13 @@
     const s = sheet(), row = s.rows[i];
     if (col === state.doc.mainColumn) {
       const m = Model.detectKindPrefix(t.value);
-      if (m && (m.kind !== Model.normKind(row.kind) || m.text !== t.value)) {
+      if (m && (m.kind !== Model.normKind(row['.kind']) || m.text !== t.value)) {
         const caret = Math.max(0, t.selectionStart - (t.value.length - m.text.length));
         state.focus = { i, col, caret };
-        mutate(d => { Model.setCell(d, state.si, i, col, m.text); Model.setCell(d, state.si, i, 'kind', m.kind); });
+        mutate(d => { Model.setCell(d, state.si, i, col, m.text); Model.setCell(d, state.si, i, '.kind', m.kind); });
         return;
       }
-      const ind = !Model.isHeading(row.kind) && Model.detectIndentPrefix(t.value, prefs.indentTrigger);
+      const ind = !Model.isHeading(row['.kind']) && Model.detectIndentPrefix(t.value, prefs.indentTrigger);
       if (ind) {
         const caret = Math.max(0, t.selectionStart - (t.value.length - ind.text.length));
         state.focus = { i, col, caret };
@@ -498,7 +498,7 @@
     const t = e.target;
     if (t.matches('select.kind-select')) {
       const i = rowIndexOf(t);
-      mutate(d => Model.setCell(d, state.si, i, 'kind', t.value));
+      mutate(d => Model.setCell(d, state.si, i, '.kind', t.value));
     }
     if (t.id === 'read-scope') { state.readScope = t.value; render(); }
     if (t.id === 'read-numbering') { state.readNumbering = t.value; render(); }
@@ -629,7 +629,7 @@
         if (confirm(`Delete column "${col}" from all sheets?${where}`)) mutate(d => Model.deleteColumn(d, state.si, col));
         break;
       }
-      case 'row-add': state.focus = { i: i + 1, col: state.doc.mainColumn }; mutate(d => Model.addRow(d, state.si, i + 1, nextKind(s.rows[i].kind), Model.indentOf(s.rows[i]))); break;
+      case 'row-add': state.focus = { i: i + 1, col: state.doc.mainColumn }; mutate(d => Model.addRow(d, state.si, i + 1, nextKind(s.rows[i]['.kind']), Model.indentOf(s.rows[i]))); break;
       case 'row-del': mutate(d => Model.deleteRow(d, state.si, i)); break;
     }
   }
@@ -681,10 +681,10 @@
         return;
       }
       if (state.collapsed.has(row._id)) expandRow(i);
-      const indent = Model.isHeading(row.kind) ? 0 : Model.indentOf(row);
-      if (!isMain) { mutate(d => Model.addRow(d, state.si, i + 1, nextKind(row.kind), indent)); focusRow(i + 1, col, 0); return; }
+      const indent = Model.isHeading(row['.kind']) ? 0 : Model.indentOf(row);
+      if (!isMain) { mutate(d => Model.addRow(d, state.si, i + 1, nextKind(row['.kind']), indent)); focusRow(i + 1, col, 0); return; }
       const len = t.value.length;
-      if (caret >= len) { mutate(d => Model.addRow(d, state.si, i + 1, nextKind(row.kind), indent)); focusRow(i + 1, main, 0); }
+      if (caret >= len) { mutate(d => Model.addRow(d, state.si, i + 1, nextKind(row['.kind']), indent)); focusRow(i + 1, main, 0); }
       else if (caret === 0 && len) { mutate(d => Model.addRow(d, state.si, i, 'p', indent)); focusRow(i + 1, main, 0); }
       else { mutate(d => Model.splitRow(d, state.si, i, caret)); focusRow(i + 1, main, 0); }
       return;
@@ -1026,7 +1026,7 @@
       items.push({ label: 'Row counts (words, characters, section totals)', checked: state.ui.counts, keep: true, action: () => { state.ui.counts = !state.ui.counts; render(); } });
       if (isChapter()) {
         items.push('-', { heading: 'Grid view shows' });
-        const gcols = sheet().columns.filter(c => c !== 'no' && c !== state.doc.mainColumn);
+        const gcols = sheet().columns.filter(c => c !== '.no' && c !== state.doc.mainColumn);
         for (const c of gcols) items.push({ label: c, checked: !state.ui.gridHidden.has(c), keep: true, action: () => { if (state.ui.gridHidden.has(c)) state.ui.gridHidden.delete(c); else state.ui.gridHidden.add(c); render(); } });
         if (state.ui.gridHidden.size) items.push({ label: 'All columns', keep: true, action: () => { state.ui.gridHidden.clear(); render(); } });
       }
@@ -1522,6 +1522,15 @@
     const sel = $('#st-main'); sel.innerHTML = '';
     const cols = exportColumns(true);
     cols.forEach(c => sel.appendChild(Views.el('option', { value: c, selected: c === d.mainColumn }, c)));
+    const roles = d.settings.roles || { status: '', target: '' };
+    for (const role of ['status', 'target']) {
+      const rs = $('#st-role-' + role); rs.innerHTML = '';
+      rs.appendChild(Views.el('option', { value: '' }, '(none)'));
+      cols.filter(c => c !== d.mainColumn).forEach(c => rs.appendChild(Views.el('option', { value: c, selected: c === roles[role] }, c)));
+      const hint = $('#st-role-' + role + '-hint');
+      const sug = !roles[role] && isChapter() ? Model.suggestRole(d, sheet(), role) : null;
+      hint.textContent = sug ? `“${sug}” looks like one` : '';
+    }
     const countBox = $('#st-count'); countBox.innerHTML = '';
     const counted = new Set((d.settings.countColumns || []).length ? d.settings.countColumns : [d.mainColumn]);
     cols.forEach(c => countBox.appendChild(Views.el('label', { class: 'chk inline' }, Views.el('input', { type: 'checkbox', value: c, checked: counted.has(c) }), ' ', c)));
@@ -1539,6 +1548,7 @@
         numbering: $('#st-numbering').value, freezeColumns: Math.max(0, Math.min(10, parseInt($('#st-freeze').value, 10) || 0)),
         countColumns: countSel.length === 1 && countSel[0] === sel.value ? [] : countSel,
         wordTarget: Math.max(0, parseInt(String($('#st-target').value).replace(/\s/g, ''), 10) || 0),
+        roles: { status: $('#st-role-status').value, target: $('#st-role-target').value },
         trackUpdated: $('#st-track-updated').checked, trackAuthor: $('#st-track-author').checked, trackCounts: $('#st-track-counts').checked };
       const main = sel.value;
       prefs.enterMode = $('#st-enter').value; prefs.indentTrigger = indSel.value; prefs.theme = $('#st-theme').value; applyTheme();

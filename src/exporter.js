@@ -46,7 +46,7 @@ const Exporter = (() => {
         para = null;
       };
       s.rows.forEach((r, k) => {
-        const kind = Model.normKind(r.kind);
+        const kind = Model.normKind(r['.kind']);
         const text = String(r[column] || '').trim();
         const sideVal = opts.side && opts.side.column ? String(r[opts.side.column] || '').trim() : '';
         if (kind === 'x') return;

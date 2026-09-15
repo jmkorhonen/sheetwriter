@@ -56,12 +56,12 @@ const Views = (() => {
       const rc = Model.rowCounts(doc, sheet, row);
       parts.push(`${fmt(rc.words)} w · ${fmt(rc.chars)} c`);
       const sec = sections[i];
-      const target = Model.rowTarget(sheet, row);
+      const target = Model.rowTarget(doc, sheet, row);
       if (sec) parts.push(`section ${fmt(sec.words)}${target ? ` / ${fmt(target)}` : ''} w${target ? ` (${Math.round(100 * sec.words / target)} %)` : ''} · ${fmt(sec.chars)} c · ${sec.rows} rows`);
       else if (target) parts.push(`target ${fmt(target)} w (${Math.round(100 * rc.words / target)} %)`);
     }
-    if (doc.settings.trackUpdated && row.updated) parts.push(row.updated);
-    if (doc.settings.trackAuthor && row.author) parts.push(row.author);
+    if (doc.settings.trackUpdated && row['.updated']) parts.push(row['.updated']);
+    if (doc.settings.trackAuthor && row['.author']) parts.push(row['.author']);
     return parts.join(' '); // em spaces: ordinary spaces would collapse to one
   }
   function statusChip(doc, sheet, row) {
@@ -104,18 +104,18 @@ const Views = (() => {
     const m = /^([^\s:]+):(.*)$/.exec(q);
     if (m) {
       const name = m[1].toLowerCase();
-      col = name === 'kind' || name === 'no' ? name : sheet.columns.find(c => c.toLowerCase() === name) || null;
+      col = name === 'kind' || name === '.kind' ? '.kind' : name === 'no' || name === '.no' ? '.no' : sheet.columns.find(c => c.toLowerCase() === name) || null;
       if (col) needle = m[2].trim().toLowerCase();
     }
     const gridHidden = ctx.gridHidden || new Set();
-    const cols = sheet.columns.filter(c => c !== 'no' && !gridHidden.has(c));
+    const cols = sheet.columns.filter(c => c !== '.no' && !gridHidden.has(c));
     let shown = 0, all = 0;
     holders.forEach(h => {
       all++;
       const i = +h.dataset.i, row = sheet.rows[i];
       let hit = true;
-      if (q && col === 'no') hit = num[i].startsWith(needle);
-      else if (q && col === 'kind') hit = Model.normKind(row.kind) === needle || (needle === 'h' && Model.isHeading(row.kind));
+      if (q && col === '.no') hit = num[i].startsWith(needle);
+      else if (q && col === '.kind') hit = Model.normKind(row['.kind']) === needle || (needle === 'h' && Model.isHeading(row['.kind']));
       else if (q && col) hit = String(row[col] || '').toLowerCase().includes(needle);
       else if (q) hit = num[i].startsWith(needle) || cols.some(c => String(row[c] || '').toLowerCase().includes(needle));
       h.classList.toggle('filtered', !hit);
@@ -146,7 +146,7 @@ const Views = (() => {
 
   function card(ctx, sheet, row, i, num, side, sections) {
     const main = ctx.doc.mainColumn;
-    const kind = Model.normKind(row.kind);
+    const kind = Model.normKind(row['.kind']);
     const text = row[main] || '';
     const collapsible = Model.isCollapsible(sheet.rows, i);
     const collapsed = collapsible && ctx.collapsed.has(row._id);
@@ -228,10 +228,10 @@ const Views = (() => {
     if (sheet.kind !== 'chapter') { root.appendChild(dataSheetTable(sheet, ctx)); return; }
     const num = Model.numbering(doc, si);
     const gridHidden = ctx.gridHidden || new Set();
-    const columns = sheet.columns.filter(c => c === 'no' || c === doc.mainColumn || !gridHidden.has(c));
+    const columns = sheet.columns.filter(c => c === '.no' || c === doc.mainColumn || !gridHidden.has(c));
     const hiddenCount = sheet.columns.length - columns.length;
     root.appendChild(filterBar(ctx));
-    const statusCol = Model.statusColumn(doc, sheet);
+    const statusCol = Model.statusColumn(doc, sheet), targetCol = Model.targetColumn(doc, sheet);
     const table = el('table', { class: 'grid' });
     // Fixed layout with explicit widths so columns can be resized; the table is as wide as its columns.
     const cg = el('colgroup', {});
@@ -247,12 +247,14 @@ const Views = (() => {
     for (const col of columns) {
       const isMain = col === doc.mainColumn, isRes = RESERVED.includes(col), isMeta = Model.isMeta(doc, col) || Model.isComputed(doc, col);
       const draggable = !isRes && !isMeta;
-      const th = el('th', { class: (isMain ? 'main' : '') + (isRes ? ' reserved' : '') + (col === 'no' ? ' num' : '') + (isMeta ? ' meta' : '') + (draggable ? ' col-drag' : ''), 'data-col': col, draggable: draggable ? 'true' : null });
+      const th = el('th', { class: (isMain ? 'main' : '') + (isRes ? ' reserved' : '') + (col === '.no' ? ' num' : '') + (isMeta ? ' meta' : '') + (draggable ? ' col-drag' : ''), 'data-col': col, draggable: draggable ? 'true' : null });
       if (!isRes && !isMeta && ctx.editColumn === col) {
         th.appendChild(el('input', { type: 'text', class: 'colname-edit', 'data-col': col, value: col, spellcheck: 'false' }));
       } else {
-        const titles = { no: 'Computed numbering, written to the file on save', kind: 'Row kind', indent: 'Indent level (Tab / Shift+Tab)', updated: 'Last edited (maintained by SheetWriter)', author: 'Last editor (maintained by SheetWriter)', words: 'Words in the counted columns (computed, written on save)', chars: 'Characters in the counted columns (computed, written on save)' };
-        th.appendChild(el('span', { class: 'colname' + (isRes || isMeta ? '' : ' editable'), 'data-col': col, title: (isRes || isMeta) ? titles[col] : 'Click to rename, drag the header to reorder (all sheets)' }, col, isMain ? ' ★' : ''));
+        const titles = { '.no': 'Computed numbering, written to the file on save', '.kind': 'Row kind', '.indent': 'Indent level (Tab / Shift+Tab)', '.updated': 'Last edited (maintained by SheetWriter)', '.author': 'Last editor (maintained by SheetWriter)', '.words': 'Words in the counted columns (computed, written on save)', '.chars': 'Characters in the counted columns (computed, written on save)' };
+        const role = isMain ? ' ★' : col === statusCol ? ' ●' : col === targetCol ? ' ◎' : '';
+        const roleTitle = isMain ? ' — main text column' : col === statusCol ? ' — status column (chips)' : col === targetCol ? ' — word targets' : '';
+        th.appendChild(el('span', { class: 'colname' + (isRes || isMeta ? '' : ' editable'), 'data-col': col, title: (isRes || isMeta) ? titles[col] : 'Click to rename, drag the header to reorder (all sheets)' + roleTitle }, col, role));
       }
       if (!isRes && !isMeta) {
         const ops = el('span', { class: 'colops' });
@@ -262,7 +264,7 @@ const Views = (() => {
         if (!isMain) ops.appendChild(el('button', { type: 'button', 'data-action': 'hide', 'data-col': col, title: 'Hide this column in Grid view (Columns ▾ shows it again)' }, '–'));
         if (!isMain) ops.appendChild(el('button', { type: 'button', class: 'danger', 'data-action': 'delete', 'data-col': col, title: 'Delete column' }, '✕'));
         th.appendChild(ops);
-      } else if (col !== 'no') {
+      } else if (col !== '.no') {
         th.appendChild(el('span', { class: 'colops' }, el('button', { type: 'button', 'data-action': 'hide', 'data-col': col, title: 'Hide this column in Grid view (Columns ▾ shows it again)' }, '–')));
       }
       th.appendChild(el('span', { class: 'col-resize', 'data-col': col, title: 'Drag to resize, double-click to reset' }));
@@ -278,10 +280,10 @@ const Views = (() => {
       const row = sheet.rows[i];
       const collapsible = Model.isCollapsible(sheet.rows, i);
       const collapsed = collapsible && ctx.collapsed && ctx.collapsed.has(row._id);
-      const tr = el('tr', { class: 'kind-' + Model.normKind(row.kind) + (ctx.selected && ctx.selected.has(row._id) ? ' selected' : '') + (collapsed ? ' collapsed' : ''), 'data-i': i });
+      const tr = el('tr', { class: 'kind-' + Model.normKind(row['.kind']) + (ctx.selected && ctx.selected.has(row._id) ? ' selected' : '') + (collapsed ? ' collapsed' : ''), 'data-i': i });
       tr.appendChild(el('td', { class: 'handle-col' }, el('span', { class: 'handle', draggable: 'true', title: 'Click to select the row (Shift: range, Ctrl: add), drag to move' }, '⋮⋮')));
       for (const col of columns) {
-        if (col === 'no') {
+        if (col === '.no') {
           const td = el('td', { class: 'num' + (num.warnings[i] ? ' warn' : ''), title: 'Click to select the row (Shift: range, Ctrl: add)' });
           td.appendChild(collapsible
             ? el('button', { class: 'collapse', type: 'button', title: (collapsed ? 'Expand' : 'Collapse') + ' (Ctrl+.)' }, collapsed ? '▸' : '▾')
@@ -290,15 +292,15 @@ const Views = (() => {
           if (collapsed) td.appendChild(el('span', { class: 'hidden-rows', title: 'Rows hidden under this one' }, ` +${Model.sectionEnd(sheet.rows, i) - i - 1}`));
           tr.appendChild(td); continue;
         }
-        if (col === 'kind') {
-          const sel = el('select', { class: 'kind-select', 'data-col': 'kind', title: KIND_TITLES[Model.normKind(row.kind)] });
-          for (const k of Model.KINDS) sel.appendChild(el('option', { value: k, selected: k === Model.normKind(row.kind) }, k));
+        if (col === '.kind') {
+          const sel = el('select', { class: 'kind-select', 'data-col': '.kind', title: KIND_TITLES[Model.normKind(row['.kind'])] });
+          for (const k of Model.KINDS) sel.appendChild(el('option', { value: k, selected: k === Model.normKind(row['.kind']) }, k));
           tr.appendChild(el('td', { class: 'kind' }, sel));
           continue;
         }
-        if (col === 'indent') { tr.appendChild(el('td', { class: 'indent' }, Model.indentOf(row) || '')); continue; }
+        if (col === '.indent') { tr.appendChild(el('td', { class: 'indent' }, Model.indentOf(row) || '')); continue; }
         if (Model.isMeta(doc, col)) { tr.appendChild(el('td', { class: 'meta' }, row[col] || '')); continue; }
-        if (Model.isComputed(doc, col)) { const rc = Model.rowCounts(doc, sheet, row); tr.appendChild(el('td', { class: 'meta num' }, fmt(col === 'words' ? rc.words : rc.chars))); continue; }
+        if (Model.isComputed(doc, col)) { const rc = Model.rowCounts(doc, sheet, row); tr.appendChild(el('td', { class: 'meta num' }, fmt(col === '.words' ? rc.words : rc.chars))); continue; }
         const t = el('textarea', { class: 'cell' + (col === doc.mainColumn ? ' main' : ''), 'data-col': col, rows: '1' });
         t.value = row[col] || '';
         const chipClass = col === statusCol && String(row[col] || '').trim() ? ' status c' + Model.colorIndex(String(row[col]).trim()) : '';

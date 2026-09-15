@@ -17,7 +17,7 @@ const SheetNumbering = (() => {
     return m ? +m[1] : 0;
   }
   function indentOf(row) {
-    const n = parseInt(row && row.indent, 10);
+    const n = parseInt(row && row['.indent'], 10);
     return n > 0 ? n : 0;
   }
 
@@ -28,7 +28,7 @@ const SheetNumbering = (() => {
       : { counters: [], last: 0, lastIndent: -1 };
     const numbers = [], warnings = [], levels = [], indents = [];
     for (const r of rows) {
-      const hl = headingLevel(r.kind);
+      const hl = headingLevel(r['.kind']);
       let level, warn = false, eff = 0;
       if (hl) {
         level = Math.min(hl, st.last + 1);
