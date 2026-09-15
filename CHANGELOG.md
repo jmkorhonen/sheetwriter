@@ -2,6 +2,9 @@
 
 One line per release; the commit under each tag has the details. Dates are the day the tag was pushed.
 
+## 0.18.0 (2026-09-15)
+Named snapshots kept in the browser; compare the editor with a snapshot, the saved file or another workbook: rows added, removed and changed with word-level diffs.
+
 ## 0.17.0 (2026-09-15)
 CSV import, Print / PDF from the Export dialog, page breaks before top headings when printing, narrower toolbar on small screens, tests runnable in Firefox and WebKit (`npm test -- --browser=firefox`), this changelog.
 

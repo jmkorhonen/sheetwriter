@@ -717,6 +717,69 @@ const Model = (() => {
     return at;
   }
 
+  // ---- comparing two documents ----
+  const words = t => String(t || '').toLowerCase().split(/\W+/).filter(Boolean);
+  function similarity(a, b) {
+    const A = new Set(words(a)), B = new Set(words(b));
+    if (!A.size && !B.size) return 1;
+    let n = 0; for (const w of A) if (B.has(w)) n++;
+    return n / (A.size + B.size - n);
+  }
+  /** Word-level diff of two strings: [{op: '=', '-', '+', text}], LCS on words. */
+  function wordDiff(x, y) {
+    const a = String(x || '').split(/\s+/).filter(Boolean), b = String(y || '').split(/\s+/).filter(Boolean);
+    const n = a.length, m = b.length;
+    if (n * m > 250000) return [{ op: '-', text: a.join(' ') }, { op: '+', text: b.join(' ') }];
+    const L = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+    for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) L[i][j] = a[i] === b[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+    const out = []; const push = (op, t) => { const last = out[out.length - 1]; if (last && last.op === op) last.text += ' ' + t; else out.push({ op, text: t }); };
+    let i = 0, j = 0;
+    while (i < n && j < m) { if (a[i] === b[j]) { push('=', a[i]); i++; j++; } else if (L[i + 1][j] >= L[i][j + 1]) push('-', a[i++]); else push('+', b[j++]); }
+    while (i < n) push('-', a[i++]);
+    while (j < m) push('+', b[j++]);
+    return out;
+  }
+  /** What changed from document a (older) to b (newer). Rows are matched by .id, then by identical text in the same sheet,
+   *  then by word overlap. Returns {entries: [{type: 'added'|'removed'|'changed', sheet, si, i, number, before, after, cols, kindBefore, kindAfter}],
+   *  same, sheetsAdded, sheetsRemoved}. si/i point into b for added and changed rows, into a for removed rows. */
+  function diffDocs(a, b) {
+    const main = b.mainColumn, mainA = a.mainColumn || main;
+    const textOf = (doc, r) => String(r[doc.mainColumn] || '').trim();
+    const rowsOf = doc => doc.sheets.flatMap((s, si) => s.kind === 'chapter' ? s.rows.map((r, i) => ({ doc, s, si, i, r, empty: rowIsEmpty(doc, s, r) })).filter(x => !x.empty) : []);
+    const A = rowsOf(a), B = rowsOf(b);
+    const pairs = [], usedA = new Set();
+    const byId = new Map(); A.forEach(x => { const id = String(x.r[IDENT] || '').trim(); if (id && !byId.has(id)) byId.set(id, x); });
+    const restB = [];
+    for (const y of B) { const id = String(y.r[IDENT] || '').trim(); const x = id && byId.get(id); if (x && !usedA.has(x)) { pairs.push([x, y]); usedA.add(x); } else restB.push(y); }
+    const byText = new Map(); A.forEach(x => { if (usedA.has(x)) return; const k = x.s.name + '\u0000' + textOf(a, x.r); if (!byText.has(k)) byText.set(k, []); byText.get(k).push(x); });
+    const restB2 = [];
+    for (const y of restB) { const l = byText.get(y.s.name + '\u0000' + textOf(b, y.r)); const x = l && l.find(z => !usedA.has(z)); if (x) { pairs.push([x, y]); usedA.add(x); } else restB2.push(y); }
+    const restB3 = [];
+    for (const y of restB2) {
+      let best = null, bs = 0.5;
+      for (const x of A) { if (usedA.has(x) || x.s.name !== y.s.name) continue; const sc = similarity(textOf(a, x.r), textOf(b, y.r)); if (sc > bs) { bs = sc; best = x; } }
+      if (best) { pairs.push([best, y]); usedA.add(best); } else restB3.push(y);
+    }
+    const entries = []; let same = 0;
+    const numB = new Map(), numA = new Map();
+    const numberOf = (doc, cache, si, i) => { if (!cache.has(si)) cache.set(si, numbering(doc, si).numbers); return cache.get(si)[i]; };
+    for (const [x, y] of pairs) {
+      const cols = new Set([...userColumns(a, x.s), ...userColumns(b, y.s)]);
+      const changed = [];
+      for (const c of cols) { const ca = c === mainA ? main : c; if (String(x.r[c] ?? '').trim() !== String(y.r[ca] ?? '').trim()) changed.push(ca); }
+      const kindA = normKind(x.r['.kind']), kindB = normKind(y.r['.kind']);
+      if (kindA !== kindB || indentOf(x.r) !== indentOf(y.r)) changed.push('.kind');
+      if (!changed.length) { same++; continue; }
+      entries.push({ type: 'changed', sheet: y.s.name, si: y.si, i: y.i, number: numberOf(b, numB, y.si, y.i), before: textOf(a, x.r), after: textOf(b, y.r), cols: changed, kindBefore: kindA, kindAfter: kindB, rowBefore: x.r, rowAfter: y.r });
+    }
+    for (const y of restB3) entries.push({ type: 'added', sheet: y.s.name, si: y.si, i: y.i, number: numberOf(b, numB, y.si, y.i), before: '', after: textOf(b, y.r), cols: [], kindAfter: normKind(y.r['.kind']), rowAfter: y.r });
+    for (const x of A) if (!usedA.has(x)) entries.push({ type: 'removed', sheet: x.s.name, si: x.si, i: x.i, number: numberOf(a, numA, x.si, x.i), before: textOf(a, x.r), after: '', cols: [], kindBefore: normKind(x.r['.kind']), rowBefore: x.r });
+    const order = new Map(b.sheets.map((s, k) => [s.name, k]));
+    entries.sort((p, q) => ((order.has(p.sheet) ? order.get(p.sheet) : 1e9) - (order.has(q.sheet) ? order.get(q.sheet) : 1e9)) || (p.type === 'removed') - (q.type === 'removed') || p.i - q.i);
+    const namesA = new Set(a.sheets.map(s => s.name)), namesB = new Set(b.sheets.map(s => s.name));
+    return { entries, same, sheetsAdded: [...namesB].filter(n => !namesA.has(n)), sheetsRemoved: [...namesA].filter(n => !namesB.has(n)) };
+  }
+
   return {
     RESERVED, META, COMPUTED, IDENT, KINDS, DEFAULT_COLUMNS, normKind, isHeading, indentOf, emptyRow, newChapter, newDoc, ensureIds, newId, ensureRowIds, newRowId,
     detectKindPrefix, detectIndentPrefix, stamp, isMeta, isComputed, isSystem, touch, ensureMetaColumns,
@@ -726,7 +789,7 @@ const Model = (() => {
     addRow, deleteRow, moveRow, duplicateRow, splitRow, mergeRow, setCell, setIndent, shiftIndent, cycleKind, shiftKind,
     validColumnName, addColumn, renameColumn, deleteColumn, moveColumn, moveColumnBefore, columnData, syncColumnOrder, setMainColumn, defaultView, columnWidth,
     addSheet, renameSheet, deleteSheet, moveSheet, moveRowsToSheet, uniqueSheetName, importRows,
-    cloneRows, deleteRows, insertRows, moveRows, findMatches, replaceMatches,
+    cloneRows, deleteRows, insertRows, moveRows, findMatches, replaceMatches, diffDocs, wordDiff, similarity,
   };
 })();
 if (typeof module !== 'undefined') module.exports = Model;

@@ -357,6 +357,26 @@ test('model: outline: move a section within and across sheets, promote and demot
   eq(Model.shiftSectionLevels(doc, 1, 1, -1), false, 'cannot go above h1');
   doc.sheets[1].rows[2]['.kind'] = 'h4'; eq(Model.shiftSectionLevels(doc, 1, 1, 1), false, 'a sub-heading at h4 blocks demotion'); eq(doc.sheets[1].rows[1]['.kind'], 'h1', 'unchanged');
 });
+test('model: compare two documents: matching by id, text and similarity; word diff', () => {
+  eq(Model.wordDiff('a b c d', 'a x c d e').map(p => p.op + p.text), ['=a', '-b', '+x', '=c d', '+e']);
+  ok(Model.similarity('the quick brown fox', 'the quick brown cat') > 0.5 && Model.similarity('one two', 'three four') === 0);
+  const older = sampleDoc(); Model.ensureRowIds(older);
+  const newer = JSON.parse(JSON.stringify(older)); Model.ensureIds(newer);
+  const s = newer.sheets[0];
+  s.rows[1].text = 'First argument with **bold** and more.'; // changed, matched by id
+  s.rows[4]['.id'] = ''; s.rows[4].text = 'Ääkköset ja ö toimivat hyvin.'; // id lost (as after a paste), matched by similar wording
+  s.rows[5]['.id'] = ''; // id lost, identical text: matched by text
+  s.rows[2].notes = 'new note'; // side column change
+  s.rows.push({ ...Model.emptyRow(s.columns, 'p'), text: 'Brand new row' });
+  s.rows.splice(3, 1); // 'Parked idea' removed
+  Model.addSheet(newer, 'Extra');
+  const d = Model.diffDocs(older, newer);
+  eq(d.entries.map(e => [e.type, e.sheet, (e.after || e.before).slice(0, 14)]), [
+    ['changed', 'Intro', 'First argument'], ['changed', 'Intro', 'Second sentenc'], ['changed', 'Intro', 'Ääkköset ja ö '], ['added', 'Intro', 'Brand new row'], ['removed', 'Intro', 'Parked idea']]);
+  eq(d.entries[1].cols, ['notes']); eq(d.entries[0].cols, ['text']); eq(d.same, 4, 'heading, =SUM row, both Body rows unchanged');
+  eq(d.sheetsAdded, ['Extra']); eq(d.sheetsRemoved, []);
+  eq(d.entries[3].number, '1.5'); eq(d.entries[4].number, '1.3', 'removed rows carry their old number');
+});
 test('model: sectionEnds agrees with sectionEnd on a large mixed sheet, fast', () => {
   const kinds = ['h1', 'h2', 'h3', 'p', 'p', 'p', 's', 'x'];
   let seed = 7; const rnd = () => (seed = (seed * 48271) % 2147483647) / 2147483647;

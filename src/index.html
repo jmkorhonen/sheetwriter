@@ -174,6 +174,25 @@
   </form>
 </dialog>
 
+<dialog id="dlg-snap">
+  <form method="dialog" class="dlg">
+    <h2>Snapshots and compare</h2>
+    <p class="muted" style="font-size:13px;margin:0 0 10px">A snapshot is a named copy of the whole workbook kept in this browser (the autosave history under Recent keeps unnamed ones). Compare lists the rows added, removed or changed since a snapshot, since the file was last saved, or against another workbook.</p>
+    <div class="about"><input type="text" id="snap-name" placeholder="Snapshot name" style="font:inherit;padding:3px 6px;border:1px solid var(--line);border-radius:6px;min-width:200px"><button type="button" class="small" id="snap-new">Save snapshot</button><span style="flex:1"></span><button type="button" class="small" id="snap-disk" hidden title="Compare the editor with what is in the file on disk">Compare with the saved file</button><button type="button" class="small" id="snap-file" title="Compare the editor with another .xlsx or .ods">Compare with a file…</button></div>
+    <div id="snap-list" class="snap-list"></div>
+    <div class="actions"><button type="button" data-close>Close</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlg-compare">
+  <form method="dialog" class="dlg">
+    <h2 id="cmp-title">Compare</h2>
+    <p id="cmp-summary" class="muted" style="font-size:13px;margin:0 0 8px"></p>
+    <div id="cmp-list" class="cmp-list"></div>
+    <div class="actions"><span class="muted" style="font-size:12px;flex:1">Click an added or changed row to go to it.</span><button type="button" data-close>Close</button></div>
+  </form>
+</dialog>
+
 <dialog id="dlg-ask">
   <form method="dialog" class="dlg">
     <h2 id="ask-label">Name</h2>
@@ -247,6 +266,7 @@
     <p>Columns are shared by all chapter sheets: adding, renaming, deleting or reordering a column applies everywhere, and deleting warns if any sheet holds data in it. Click a column name to rename it, drag a column header to reorder, drag its right edge to resize. The – button hides a column in Grid view; the Columns ▾ button chooses which columns the Grid and Draft views show. Rows hide in Grid by collapsing (▾ in the number cell, Collapse all) or by typing in the filter box above the table. Double-click a sheet tab to rename it. Drag rows by the ⋮⋮ handle, drag tabs to reorder chapters. Click the title in the toolbar to change it.</p>
     <h3>Files</h3>
     <p>Saving checks whether the file changed on disk since it was opened (edited in Excel, say) and asks before overwriting. An autosave snapshot is kept in the browser every 5 minutes (Recent ▾ → Recover an autosave…), and Settings can add an autosave copy written to a second workbook, such as <code>name_AUTOSAVE.xlsx</code>, at an interval of your choice. Excel hyperlinks are read as Markdown links. In Read view, click any paragraph or heading to edit it.</p>
+    <p>Recent ▾ → Snapshots and compare… keeps named copies of the workbook in this browser and compares the editor with a snapshot, with the saved file, or with another workbook: rows added, removed or changed, with word-level differences, grouped by sheet. Click a row in the list to go to it.</p>
     <p>Editing in Excel: the <code>.sheetwriter</code> sheet ends with instructions on what is safe (text, rows, sorting, <code>.kind</code>, <code>.indent</code>, your own columns), what is kept (cell colours, borders, comments and fonts follow the row through a hidden <code>.id</code> column), what is lost on the next save (formulas, number formats, row heights on chapter sheets) and what breaks the structure (renaming dotted columns or the text column, merged cells). Chapter sheets have only their header row protected; everything else is editable, and Review → Unprotect Sheet lifts it.</p>
     <p>Formats: the workbook is saved as <code>.xlsx</code> or, when the file name ends in <code>.ods</code>, as an OpenDocument spreadsheet for LibreOffice, with the same sheets, settings and contents. Both open. Formatting of data sheets is only carried through for <code>.xlsx</code>, and <code>.ods</code> files have no frozen panes.</p>
     <p>In Edge and Chrome the app opens and saves the .xlsx in place and keeps a Recent list. In Firefox and Safari, Open uses a file picker and Save downloads a copy. Unsaved work is also kept in the browser and offered back on the next start. Sheets without a main text column are data sheets: shown read-only, written back unchanged. A workbook edited or sorted in Excel is put back in <code>no</code> order on load; rows without a number go last. A plain spreadsheet without a <code>text</code> column is imported using its longest text column.</p>
@@ -255,6 +275,7 @@
 </dialog>
 
 <input type="file" id="file-input" accept=".xlsx,.ods" hidden>
+<input type="file" id="cmp-input" accept=".xlsx,.ods" hidden>
 <input type="file" id="md-input" accept=".md,.markdown,.txt,.csv,.tsv,text/markdown,text/plain,text/csv" multiple hidden>
 
 <script src="timers.js"></script>

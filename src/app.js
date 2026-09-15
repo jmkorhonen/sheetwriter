@@ -1372,8 +1372,9 @@
     let list = [];
     try { list = (await idb.get('recents')) || []; } catch (e) { /* ignore */ }
     const recover = { label: 'Recover an autosave…', action: () => recoverMenu(anchor) };
-    if (!hasFS) { showMenu(anchor, [{ label: 'Recent files need Edge or Chrome (direct file access).', disabled: true, action() {} }, '-', recover]); return; }
-    if (!list.length) { showMenu(anchor, [{ label: 'No recent files yet. Files you open or save appear here.', disabled: true, action() {} }, '-', recover]); return; }
+    const snaps = { label: 'Snapshots and compare…', action: openSnapshots };
+    if (!hasFS) { showMenu(anchor, [{ label: 'Recent files need Edge or Chrome (direct file access).', disabled: true, action() {} }, '-', recover, snaps]); return; }
+    if (!list.length) { showMenu(anchor, [{ label: 'No recent files yet. Files you open or save appear here.', disabled: true, action() {} }, '-', recover, snaps]); return; }
     showMenu(anchor, list.map(r => ({
       label: r.name, title: new Date(r.at).toLocaleString(),
       action: async () => {
@@ -1390,8 +1391,90 @@
           try { const l = ((await idb.get('recents')) || []).filter(x => x !== r && x.name !== r.name); await idb.set('recents', l); } catch (e2) { /* ignore */ }
         }
       },
-    })).concat(['-', { label: 'Recover an autosave…', action: () => recoverMenu(anchor) }, { label: 'Clear list', action: () => idb.del('recents').catch(() => {}) }]));
+    })).concat(['-', recover, snaps, { label: 'Clear list', action: () => idb.del('recents').catch(() => {}) }]));
   }
+
+  // ---------- snapshots and compare ----------
+  const dlgSnap = $('#dlg-snap'), dlgCompare = $('#dlg-compare');
+  async function snapshotList() { try { return (await idb.get('snapshots')) || []; } catch (e) { return []; } }
+  async function renderSnapshots() {
+    const list = await snapshotList();
+    const box = $('#snap-list'); box.innerHTML = '';
+    if (!list.length) { box.appendChild(Views.el('div', { class: 'snap-empty' }, 'No snapshots yet. Name one above and save it; it stays in this browser until you delete it.')); return; }
+    list.forEach((sn, k) => box.appendChild(Views.el('div', { class: 'snap-row' },
+      Views.el('span', { class: 'name' }, sn.name), Views.el('span', { class: 'when' }, `${new Date(sn.at).toLocaleString()} · ${sn.fileName}`),
+      Views.el('button', { type: 'button', class: 'small', 'data-k': k, 'data-op': 'compare', title: 'Rows added, removed or changed since this snapshot' }, 'Compare'),
+      Views.el('button', { type: 'button', class: 'small', 'data-k': k, 'data-op': 'open', title: 'Replace the editor contents with this snapshot' }, 'Open'),
+      Views.el('button', { type: 'button', class: 'small danger', 'data-k': k, 'data-op': 'delete' }, '✕'))));
+  }
+  async function openSnapshots() {
+    $('#snap-name').value = (state.doc.settings.title || state.fileName.replace(/\.(xlsx|ods)$/i, '')) + ' ' + Model.stamp();
+    $('#snap-disk').hidden = !state.fileHandle;
+    await renderSnapshots();
+    dlgSnap.showModal();
+  }
+  $('#snap-new').onclick = async () => {
+    const name = $('#snap-name').value.trim() || Model.stamp();
+    const list = await snapshotList();
+    list.unshift({ name, fileName: state.fileName, at: Date.now(), doc: JSON.parse(snapshot()) });
+    try { await idb.set('snapshots', list.slice(0, 30)); } catch (e) { alert('Could not store the snapshot: ' + (e.message || e)); return; }
+    flashStatus(`Snapshot "${name}" saved in this browser.`);
+    await renderSnapshots();
+  };
+  $('#snap-list').addEventListener('click', async e => {
+    const b = e.target.closest('button[data-op]'); if (!b) return;
+    const list = await snapshotList(); const sn = list[+b.dataset.k]; if (!sn) return;
+    if (b.dataset.op === 'delete') { list.splice(+b.dataset.k, 1); await idb.set('snapshots', list).catch(() => {}); await renderSnapshots(); return; }
+    if (b.dataset.op === 'open') { if (!confirmDiscard()) return; dlgSnap.close(); loadDoc(JSON.parse(JSON.stringify(sn.doc)), sn.fileName, null, new Map()); state.dirty = true; render(); return; }
+    showCompare(sn.doc, `snapshot "${sn.name}" (${new Date(sn.at).toLocaleString()})`);
+  });
+  $('#snap-disk').onclick = async () => {
+    try {
+      const f = await state.fileHandle.getFile();
+      const { doc } = await parseWorkbook(await f.arrayBuffer(), f.name);
+      showCompare(doc, `the saved file ${f.name} (${new Date(f.lastModified).toLocaleString()})`);
+    } catch (e) { alert('Could not read the file: ' + (e.message || e)); }
+  };
+  $('#snap-file').onclick = () => $('#cmp-input').click();
+  $('#cmp-input').onchange = async e => {
+    const f = e.target.files[0]; e.target.value = '';
+    if (!f) return;
+    try { const { doc } = await parseWorkbook(await f.arrayBuffer(), f.name); showCompare(doc, f.name); }
+    catch (err) { alert('Could not read the file: ' + (err.message || err)); }
+  };
+  /** The compare dialog: current workbook against an older document. */
+  function showCompare(older, label) {
+    const d = Model.diffDocs(older, state.doc);
+    $('#cmp-title').textContent = 'Compare with ' + label;
+    const n = t => d.entries.filter(e => e.type === t).length;
+    const parts = [`${n('added')} added`, `${n('removed')} removed`, `${n('changed')} changed`, `${d.same} unchanged`];
+    if (d.sheetsAdded.length) parts.push('new sheets: ' + d.sheetsAdded.join(', '));
+    if (d.sheetsRemoved.length) parts.push('sheets gone: ' + d.sheetsRemoved.join(', '));
+    $('#cmp-summary').textContent = 'Rows: ' + parts.join(' · ') + '. Rows are matched by their .id, then by identical text, then by similar wording.';
+    const box = $('#cmp-list'); box.innerHTML = '';
+    if (!d.entries.length) box.appendChild(Views.el('div', { class: 'cmp-none' }, 'No differences in the text columns.'));
+    const diffHtml = (a, b) => Model.wordDiff(a, b).map(p => p.op === '=' ? MD.escapeHtml(p.text) : p.op === '-' ? '<del>' + MD.escapeHtml(p.text) + '</del>' : '<ins>' + MD.escapeHtml(p.text) + '</ins>').join(' ');
+    let lastSheet = null;
+    for (const e of d.entries) {
+      if (e.sheet !== lastSheet) { box.appendChild(Views.el('div', { class: 'cmp-sheet' }, e.sheet)); lastSheet = e.sheet; }
+      const jump = e.type !== 'removed';
+      const text = e.type === 'changed' ? diffHtml(e.before, e.after) : MD.escapeHtml(e.type === 'added' ? e.after : e.before);
+      const side = [];
+      for (const c of e.cols || []) {
+        if (c === '.kind') side.push(`kind ${e.kindBefore}${Model.indentOf(e.rowBefore) ? '+' + Model.indentOf(e.rowBefore) : ''} → ${e.kindAfter}${Model.indentOf(e.rowAfter) ? '+' + Model.indentOf(e.rowAfter) : ''}`);
+        else if (c !== state.doc.mainColumn) side.push(`${c}: “${String(e.rowBefore[c] || '').trim() || '—'}” → “${String(e.rowAfter[c] || '').trim() || '—'}”`);
+      }
+      box.appendChild(Views.el('div', { class: 'cmp-entry cmp-' + e.type + (jump ? ' jump' : ''), 'data-si': jump ? e.si : null, 'data-i': jump ? e.i : null, title: jump ? 'Go to this row' : 'This row is no longer in the workbook' },
+        Views.el('span', { class: 'badge' }, e.type), Views.el('span', { class: 'num' }, e.number || ''),
+        Views.el('div', {}, Views.el('div', { html: text || '<span class="muted">(no text)</span>' }), side.length ? Views.el('div', { class: 'side' }, side.join(' · ')) : null)));
+    }
+    dlgCompare.showModal();
+  }
+  $('#cmp-list').addEventListener('click', e => {
+    const row = e.target.closest('.cmp-entry.jump'); if (!row) return;
+    dlgCompare.close(); if (dlgSnap.open) dlgSnap.close();
+    goToRow(+row.dataset.si, +row.dataset.i);
+  });
 
   // ---------- export dialog ----------
   const dlgExport = $('#dlg-export');
@@ -1768,5 +1851,5 @@
   // ---------- boot ----------
   render();
   offerRestore();
-  window.SheetWriter = { state, render, prefs, Model, XlsxIO, Odf, Exporter, Importer, APP, openImport, currentViewState, applyViewState, loadDoc };
+  window.SheetWriter = { state, render, prefs, Model, XlsxIO, Odf, Exporter, Importer, APP, openImport, openSnapshots, showCompare, currentViewState, applyViewState, loadDoc };
 })();

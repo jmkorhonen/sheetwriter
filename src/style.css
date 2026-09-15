@@ -351,6 +351,27 @@ table.grid td.status.c4 { background: var(--c4); } table.grid td.status.c5 { bac
   article.read h1, article.read h2, article.read h3 { break-after: avoid; page-break-after: avoid; }
   @page { margin: 2cm; }
 }
+/* ---- snapshots and compare ---- */
+.snap-list { max-height: 40vh; overflow: auto; border: 1px solid var(--line); border-radius: 6px; }
+.snap-row { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-bottom: 1px solid var(--line2); font-size: 13px; }
+.snap-row:last-child { border-bottom: none; }
+.snap-row .name { font-weight: 600; }
+.snap-row .when { color: var(--muted); flex: 1; }
+.snap-empty { padding: 10px; color: var(--muted); font-size: 13px; }
+.cmp-list { max-height: 60vh; overflow: auto; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; }
+.cmp-sheet { padding: 4px 8px; background: var(--bg2); font-weight: 600; font-size: 12.5px; color: var(--ink2); position: sticky; top: 0; }
+.cmp-entry { display: grid; grid-template-columns: 62px 56px 1fr; gap: 8px; padding: 5px 8px; border-bottom: 1px solid var(--line2); align-items: baseline; }
+.cmp-entry.jump { cursor: pointer; }
+.cmp-entry.jump:hover { background: var(--hover); }
+.cmp-entry .badge { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .02em; border-radius: 4px; padding: 1px 5px; text-align: center; }
+.cmp-added .badge { background: var(--c1); color: var(--c1t); }
+.cmp-removed .badge { background: var(--c3); color: var(--c3t); }
+.cmp-changed .badge { background: var(--c2); color: var(--c2t); }
+.cmp-entry .num { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+.cmp-entry del { background: var(--c3); color: var(--c3t); text-decoration: line-through; }
+.cmp-entry ins { background: var(--c1); color: var(--c1t); text-decoration: none; }
+.cmp-entry .side { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.cmp-none { padding: 12px; color: var(--muted); }
 /* Small screens: a tighter toolbar; rarely needed buttons go, everything else wraps. */
 @media (max-width: 640px) {
   #toolbar { gap: 6px; padding: 4px 6px; }
