@@ -2,6 +2,9 @@
 
 One line per release; the commit under each tag has the details. Dates are the day the tag was pushed.
 
+## 0.19.5 (2026-09-16)
+Heading rows have a background tint that fades with the level, in Grid and Draft, light and dark.
+
 ## 0.19.4 (2026-09-16)
 Grid: heading levels are told apart as in Draft (h1 and h2 bold and larger, h3 bold italic, h4 medium italic and greyer).
 
