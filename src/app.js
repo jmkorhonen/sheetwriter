@@ -211,6 +211,12 @@
     const i = rowIndexOf(t); if (i == null) return;
     selectRow(i, e);
   });
+  // A click anywhere that is not a selection control (handle, number), the selection bar, a menu, a dialog or a sheet tab clears the selection.
+  document.addEventListener('click', e => {
+    if (!state.sel.size || e.shiftKey || e.ctrlKey || e.metaKey) return;
+    if (e.target.closest && e.target.closest('.card .num, .card .handle, td.num, td.handle-col, #selbar, .popup, dialog, #tabs')) return;
+    clearSelection();
+  });
   // Keys that act on the selection when no text field has focus.
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && state.sel.size) { clearSelection(); return; }
@@ -594,7 +600,7 @@
     if (!t.matches('textarea.cell')) return;
     if (rendering || !t.isConnected) return; // blur caused by a re-render, not by the user leaving the row
     const mw = t.closest('.mainwrap');
-    if (mw) mw.classList.remove('editing');
+    if (mw) { mw.classList.remove('editing'); mw.classList.toggle('empty', !t.value.trim()); const rd = mw.querySelector('.rendered'); if (rd && state.view === 'grid') rd.innerHTML = MD.render(t.value); }
     const i = rowIndexOf(t);
     if (i == null || !isChapter()) return;
     if (state.view === 'draft') { Views.refreshCard(viewRoot, ctx(), i); Views.refreshMeta(viewRoot, ctx()); }
@@ -766,6 +772,15 @@
       e.preventDefault();
       state.focus = { i, col, caret };
       mutate(d => Model.cycleKind(d, state.si, i, e.shiftKey ? -1 : 1));
+      return;
+    }
+    if (e.key === 'Tab' && !e.ctrlKey && !e.altKey && state.view === 'grid') {
+      e.preventDefault();
+      const hidden = state.ui.gridHidden;
+      const cols = s.columns.filter(c => (c === main || !hidden.has(c)) && !Model.isSystem(state.doc, c));
+      let k = cols.indexOf(col) + (e.shiftKey ? -1 : 1), ni = i;
+      if (k >= cols.length) { k = 0; ni = nextVisibleAfter(i + 1); } else if (k < 0) { k = cols.length - 1; ni = prevVisible(i); }
+      if (ni != null && cols[k]) focusRow(ni, cols[k], e.shiftKey ? 'end' : 0);
       return;
     }
     if (e.key === 'Tab' && noMods && isMain && state.view === 'draft') {

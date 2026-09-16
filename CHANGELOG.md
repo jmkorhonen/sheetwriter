@@ -2,6 +2,9 @@
 
 One line per release; the commit under each tag has the details. Dates are the day the tag was pushed.
 
+## 0.19.2 (2026-09-16)
+Grid cells render their Markdown (italics, bold, links, lists) and open for editing on click; Tab moves between cells. A click anywhere outside the selection controls clears the row selection.
+
 ## 0.19.1 (2026-09-15)
 Selected cards and grid rows drag as a whole (not just their handles); the selection bar says so.
 

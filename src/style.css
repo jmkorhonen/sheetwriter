@@ -146,9 +146,13 @@ table.grid tr.selected td { background: var(--sel); }
 .mainwrap .rendered > :last-child { margin-bottom: 0; }
 .mainwrap .rendered p { margin: 0 0 .4em; }
 .mainwrap .rendered ul, .mainwrap .rendered ol { margin: .2em 0; padding-left: 1.4em; }
-.card .mainwrap textarea { display: none; }
-.card .mainwrap.editing .rendered, .card .mainwrap.empty .rendered { display: none; }
-.card .mainwrap.editing textarea, .card .mainwrap.empty textarea { display: block; }
+.mainwrap textarea { display: none; }
+.mainwrap.editing .rendered, .mainwrap.empty .rendered { display: none; }
+.mainwrap.editing textarea, .mainwrap.empty textarea { display: block; }
+table.grid td .mainwrap .rendered { font-family: inherit; font-size: 13.5px; line-height: 1.4; padding: 2px 4px; min-height: 1.4em; }
+table.grid td.main .mainwrap .rendered { font-family: var(--serif); font-size: 14.5px; }
+table.grid td .mainwrap .rendered p { margin: 0 0 .3em; }
+table.grid td .mainwrap.empty textarea { min-height: 1.4em; }
 textarea.cell { width: 100%; border: none; background: transparent; resize: none; overflow: hidden; outline: none; font: inherit; color: inherit; padding: 3px 5px; line-height: 1.45; }
 textarea.cell.main { font-family: var(--serif); font-size: 16px; }
 .card.kind-h1 .rendered, .card.kind-h1 textarea.main { font-family: var(--sans); font-weight: 700; font-size: 21px; }

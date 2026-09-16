@@ -343,7 +343,9 @@ const Views = (() => {
         const t = el('textarea', { class: 'cell' + (col === doc.mainColumn ? ' main' : ''), 'data-col': col, rows: '1' });
         t.value = row[col] || '';
         const chipClass = col === statusCol && String(row[col] || '').trim() ? ' status c' + Model.colorIndex(String(row[col]).trim()) : '';
-        const td = el('td', { class: (col === doc.mainColumn ? 'main' : '') + chipClass }, t);
+        // Rendered Markdown until the cell is clicked or focused; the same .mainwrap mechanism as Draft cards.
+        const wrap = el('div', { class: 'mainwrap' + (String(row[col] || '').trim() ? '' : ' empty') }, el('div', { class: 'rendered', html: MD.render(row[col] || '') }), t);
+        const td = el('td', { class: (col === doc.mainColumn ? 'main' : '') + chipClass }, wrap);
         if (col === doc.mainColumn && num.indents[i]) td.style.paddingLeft = (4 + num.indents[i] * 18) + 'px';
         tr.appendChild(td);
       }

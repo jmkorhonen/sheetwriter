@@ -66,6 +66,7 @@ Numbering continues from sheet to sheet by default, so sheets are containers rat
 | Ctrl+. | Collapse / expand the rows under a heading, paragraph or indented row. Collapsed sections drag as one unit. |
 | Ctrl+J, Ctrl+D, Ctrl+Shift+K | Merge with next, duplicate, delete. |
 | Ctrl+Shift+M | Move the row to another chapter (or drag it onto a sheet tab). |
+| Click elsewhere, Esc | Clear the selection. |
 | Drag a selected row | With rows selected (click ⋮⋮, Shift or Ctrl to extend), drag any of them to move them all, above or below another row or onto a sheet tab. |
 | Backspace | On an empty row: delete it. At the start of an indented row: outdent. Empty rows are also removed when you leave them. |
 | Ctrl+F / Ctrl+H, F3 | Find, find and replace, next match. |
@@ -78,7 +79,7 @@ Press `?` in the toolbar or F1 for the full list.
 ## Views and export
 
 - **Draft**: one card per row, Markdown rendered when the row is not being edited, side columns to the right (empty ones appear when the card is focused). A small grey line under each card shows the row's words and characters, the total of everything a heading, paragraph group or indented group owns, and the last edit when tracking is on.
-- **Grid**: every column as a table, frozen header and number column, drag handles, inline column renaming, drag a header to reorder. Columns are shared by all chapter sheets: adding, renaming, deleting or reordering applies everywhere, and deleting warns if any sheet holds data in the column.
+- **Grid**: every column as a table, frozen header and number column, drag handles, inline column renaming, drag a header to reorder. Cells show their Markdown rendered and open for editing on click; Tab and Shift+Tab move between cells. Columns are shared by all chapter sheets: adding, renaming, deleting or reordering applies everywhere, and deleting warns if any sheet holds data in the column.
 - **Columns ▾** chooses which side columns and counts the Draft view shows. This display state, with the current view, sheet, row and table of contents, is saved in the workbook and restored when the file is opened again. Click the title in the toolbar to change it.
 - **Read**: the text as flowing prose, with numbering none / headings / all and indented rows as paragraphs or nested lists.
 - **Contents**: a pane listing the headings of this sheet or of all sheets, with numbers and section word counts. Click to jump; the heading you are working under is highlighted. The pane is also an outliner: drag a heading to move its whole section, above or below another heading or onto a sheet name to move it to that sheet; the ◂ ▸ buttons promote or demote a section with its sub-headings, ⤴ moves it to a new sheet named after the heading; on a focused entry, Alt+↑/↓ moves the section past a sibling and Alt+Shift+←/→ promotes or demotes it.
