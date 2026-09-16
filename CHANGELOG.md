@@ -2,6 +2,9 @@
 
 One line per release; the commit under each tag has the details. Dates are the day the tag was pushed.
 
+## 0.19.4 (2026-09-16)
+Grid: heading levels are told apart as in Draft (h1 and h2 bold and larger, h3 bold italic, h4 medium italic and greyer).
+
 ## 0.19.3 (2026-09-16)
 Grid: heading rows are bold (and x rows grey) in the rendered cell too, not only while editing.
 

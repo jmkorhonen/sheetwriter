@@ -229,8 +229,11 @@ table.grid td.meta, table.grid th.meta { font-size: 11px; color: var(--faint); w
 table.grid td.main { min-width: 0; }
 table.grid td textarea.cell { padding: 2px 4px; font-size: 13.5px; }
 table.grid td.main textarea.cell { font-family: var(--serif); font-size: 14.5px; }
-table.grid tr.kind-h1 td.main textarea, table.grid tr.kind-h2 td.main textarea, table.grid tr.kind-h1 td.main .rendered, table.grid tr.kind-h2 td.main .rendered { font-family: var(--sans); font-weight: 700; }
-table.grid tr.kind-h3 td.main textarea, table.grid tr.kind-h4 td.main textarea, table.grid tr.kind-h3 td.main .rendered, table.grid tr.kind-h4 td.main .rendered { font-family: var(--sans); font-weight: 600; font-style: italic; }
+/* Heading levels step down as in Draft view: h1 and h2 bold, h3 bold italic, h4 medium italic and greyer. */
+table.grid tr.kind-h1 td.main textarea, table.grid tr.kind-h1 td.main .rendered { font-family: var(--sans); font-weight: 700; font-size: 16px; }
+table.grid tr.kind-h2 td.main textarea, table.grid tr.kind-h2 td.main .rendered { font-family: var(--sans); font-weight: 700; font-size: 15px; }
+table.grid tr.kind-h3 td.main textarea, table.grid tr.kind-h3 td.main .rendered { font-family: var(--sans); font-weight: 700; font-style: italic; font-size: 14.5px; }
+table.grid tr.kind-h4 td.main textarea, table.grid tr.kind-h4 td.main .rendered { font-family: var(--sans); font-weight: 500; font-style: italic; font-size: 14px; color: var(--ink2); }
 table.grid tr.kind-x td.main .rendered { font-style: italic; color: var(--muted); }
 table.grid tr.kind-x td { opacity: .6; }
 table.grid tr.dragging { opacity: .4; }
