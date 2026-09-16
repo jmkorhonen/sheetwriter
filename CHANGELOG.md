@@ -2,6 +2,9 @@
 
 One line per release; the commit under each tag has the details. Dates are the day the tag was pushed.
 
+## 0.19.3 (2026-09-16)
+Grid: heading rows are bold (and x rows grey) in the rendered cell too, not only while editing.
+
 ## 0.19.2 (2026-09-16)
 Grid cells render their Markdown (italics, bold, links, lists) and open for editing on click; Tab moves between cells. A click anywhere outside the selection controls clears the row selection.
 
