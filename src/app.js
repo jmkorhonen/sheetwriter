@@ -637,6 +637,13 @@
       t.setSelectionRange(t.value.length, t.value.length);
       return;
     }
+    // Clicking the empty area right of the text opens the side fields (they are hidden while all are empty).
+    const sd = e.target.closest('.card .side');
+    if (sd && !e.target.closest('textarea, .side-field')) {
+      const i = rowIndexOf(sd);
+      const first = sd.querySelector('.side-field textarea');
+      if (i != null && first) { focusRow(i, first.dataset.col, 'end'); return; }
+    }
     const kb = e.target.closest('.kindbadge');
     if (kb) {
       const i = rowIndexOf(kb);

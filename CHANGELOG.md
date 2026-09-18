@@ -2,6 +2,9 @@
 
 One line per release; the commit under each tag has the details. Dates are the day the tag was pushed.
 
+## 0.19.6 (2026-09-18)
+Draft: clicking the empty area right of the text opens the side columns, which now show a hint naming them. Bigger collapse/expand triangles.
+
 ## 0.19.5 (2026-09-16)
 Heading rows have a background tint that fades with the level, in Grid and Draft, light and dark.
 

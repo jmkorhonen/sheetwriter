@@ -208,7 +208,10 @@ const Views = (() => {
     c.append(gutter, body);
     setMeta(c, metaLine(ctx, sheet, row, i, sections), statusChip(ctx.doc, sheet, row));
     if (side.length) {
-      const sd = el('div', { class: 'side' });
+      // With every side column empty there is nothing to click on the right, so an empty side area carries a hint that opens the fields.
+      const anyFilled = side.some(col => String(row[col] || '').trim());
+      const sd = el('div', { class: 'side' + (anyFilled ? '' : ' empty'), title: 'Click to add ' + side.join(', ') });
+      sd.appendChild(el('span', { class: 'side-hint' }, '+ ' + (side.length > 3 ? side.slice(0, 2).join(', ') + ', …' : side.join(', '))));
       for (const col of side) {
         const t = el('textarea', { class: 'cell side-cell', 'data-col': col, rows: '1', placeholder: '…' });
         t.value = row[col] || '';
@@ -233,6 +236,8 @@ const Views = (() => {
       const t = f.querySelector('textarea');
       f.classList.toggle('filled', !!t.value);
     });
+    const sd = c.querySelector('.side');
+    if (sd) sd.classList.toggle('empty', !sd.querySelector('.side-field.filled'));
     // own section only; other cards' totals are refreshed by refreshMeta when the row is left
     const sections = []; sections[i] = Model.sectionCounts(doc, sheet)[i];
     setMeta(c, metaLine(ctx, sheet, row, i, sections), statusChip(doc, sheet, row));
