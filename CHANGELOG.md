@@ -2,6 +2,9 @@
 
 One line per release; the commit under each tag has the details. Dates are the day the tag was pushed.
 
+## 0.19.7 (2026-09-18)
+Draft: the side area spans the whole card height, so any spot right of the divider opens the side columns; the hint naming them only appears on hover.
+
 ## 0.19.6 (2026-09-18)
 Draft: clicking the empty area right of the text opens the side columns, which now show a hint naming them. Bigger collapse/expand triangles.
 

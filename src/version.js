@@ -1,7 +1,7 @@
 /* SheetWriter — version and project links. Single source of truth. */
 const APP = {
   name: 'SheetWriter',
-  version: '0.19.6',
+  version: '0.19.7',
   repo: 'https://github.com/jmkorhonen/sheetwriter',
   readme: 'https://github.com/jmkorhonen/sheetwriter#readme',
   site: 'https://jmkorhonen.github.io/sheetwriter/',

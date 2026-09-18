@@ -174,11 +174,12 @@ textarea.cell.main { font-family: var(--serif); font-size: 16px; }
 .pill { border: 1px solid var(--line); background: var(--chip); border-radius: 10px; font-size: 11px; color: var(--muted); padding: 0 8px; margin: 0 5px 3px; cursor: pointer; }
 .pill:hover { background: var(--accent-soft); }
 .meta { font-size: 10.5px; color: var(--faint); text-align: right; padding: 0 5px 1px; }
-.side { display: flex; flex-direction: column; gap: 1px; padding: 2px 0 2px 8px; border-left: 1px dashed var(--line); min-width: 0; font-size: 12.5px; }
-.side.empty { cursor: text; min-height: 24px; }
-.side-hint { display: none; color: var(--faint); font-size: 11px; padding: 4px 0 0 4px; user-select: none; }
+.side { display: flex; flex-direction: column; gap: 1px; padding: 2px 0 2px 8px; border-left: 1px dashed var(--line); min-width: 0; font-size: 12.5px; align-self: stretch; }
+.side.empty { cursor: text; min-height: 22px; }
+/* The hint names the columns but stays invisible until the pointer is over the area, so empty rows look empty. */
+.side-hint { display: none; color: var(--faint); font-size: 11px; padding: 3px 0 0 4px; user-select: none; pointer-events: none; opacity: 0; transition: opacity .12s; }
 .side.empty .side-hint { display: block; }
-.side.empty:hover .side-hint { color: var(--accent); }
+.side.empty:hover .side-hint { opacity: 1; }
 .card:focus-within .side-hint, .card.focusing .side-hint { display: none; }
 .side-field { display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
 .side-field:not(.filled) { display: none; }
