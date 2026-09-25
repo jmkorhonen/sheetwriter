@@ -18,12 +18,13 @@ const XlsxIO = (() => {
     freeze_columns: 'How many leading columns stay frozen in the Grid view and in Excel',
     count_columns: 'Columns whose words and characters the status bar counts (empty = the main column)',
     column_widths: 'Grid column widths in pixels, name:px pairs; also used for the Excel column widths',
-    word_target: 'Word target for the whole workbook (0 = none); per-section targets go in the target column on heading rows',
+    word_target: 'Target for the whole workbook, in words or characters as target_unit says (0 = none); per-section targets go in the target column on heading rows',
+    target_unit: 'words or chars: what the workbook target and the section targets count',
     row_defaults: 'Values given to the side columns of rows added in SheetWriter, as column=value pairs separated by semicolons (e.g. status=todo)',
     protect_headers: 'yes/no: protect the header row of chapter sheets in Excel (data cells stay editable; Review → Unprotect Sheet to rename columns)',
     contents_sheet: 'yes/no: write a .contents sheet listing every heading with a link to it (rewritten on every save, not shown in SheetWriter)',
-    status_column: 'Column whose values show as coloured chips (any name; set in Settings → Column roles)',
-    target_column: 'Column holding per-section word targets on heading rows (any name; set in Settings → Column roles)',
+    status_column: 'Column whose values show as coloured chips (any name; set in Settings → Columns)',
+    target_column: 'Column holding per-section targets (words or characters, see target_unit) on heading rows (any name; set in Settings → Counts and targets)',
     track_updated: 'yes/no: keep an ".updated" column with the time each row was last edited in SheetWriter',
     track_author: 'yes/no: keep an ".author" column with the author who last edited each row in SheetWriter',
     track_counts: 'yes/no: keep ".words" and ".chars" columns with per-row counts over the counted columns (written on save, recomputed on load)',
@@ -139,6 +140,7 @@ const XlsxIO = (() => {
         case 'status_column': doc.settings.roles.status = value.trim(); break;
         case 'protect_headers': doc.settings.protectHeaders = yes(value); break;
         case 'contents_sheet': doc.settings.contentsSheet = yes(value); break;
+        case 'target_unit': doc.settings.targetUnit = /^c/i.test(value.trim()) ? 'chars' : 'words'; break;
         case 'target_column': doc.settings.roles.target = value.trim(); break;
         case 'column_widths': {
           const w = {};
@@ -181,6 +183,7 @@ const XlsxIO = (() => {
       ['count_columns', (doc.settings.countColumns || []).join(', ')],
       ['column_widths', Object.entries(doc.settings.widths || {}).map(([k, v]) => `${k}:${v}`).join(', ')],
       ['word_target', String(doc.settings.wordTarget || 0)],
+      ['target_unit', doc.settings.targetUnit === 'chars' ? 'chars' : 'words'],
       ['row_defaults', Model.pairsText(doc.settings.rowDefaults)],
       ['protect_headers', doc.settings.protectHeaders === false ? 'no' : 'yes'],
       ['contents_sheet', doc.settings.contentsSheet === false ? 'no' : 'yes'],
