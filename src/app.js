@@ -781,13 +781,18 @@
       mutate(d => Model.cycleKind(d, state.si, i, e.shiftKey ? -1 : 1));
       return;
     }
-    if (e.key === 'Tab' && !e.ctrlKey && !e.altKey && state.view === 'grid') {
-      e.preventDefault();
+    // Tab, or Left/Right at the edge of a cell's text, moves to the neighbouring grid cell.
+    const gridStep = state.view !== 'grid' ? 0
+      : e.key === 'Tab' && !e.ctrlKey && !e.altKey ? (e.shiftKey ? -1 : 1)
+      : noMods && !e.shiftKey && caret === t.selectionEnd && (e.key === 'ArrowLeft' && caret === 0 || e.key === 'ArrowRight' && caret === t.value.length) ? (e.key === 'ArrowLeft' ? -1 : 1)
+      : 0;
+    if (gridStep) {
       const hidden = state.ui.gridHidden;
       const cols = s.columns.filter(c => (c === main || !hidden.has(c)) && !Model.isSystem(state.doc, c));
-      let k = cols.indexOf(col) + (e.shiftKey ? -1 : 1), ni = i;
+      let k = cols.indexOf(col) + gridStep, ni = i;
       if (k >= cols.length) { k = 0; ni = nextVisibleAfter(i + 1); } else if (k < 0) { k = cols.length - 1; ni = prevVisible(i); }
-      if (ni != null && cols[k]) focusRow(ni, cols[k], e.shiftKey ? 'end' : 0);
+      if (e.key === 'Tab' || ni != null && cols[k]) e.preventDefault();
+      if (ni != null && cols[k]) focusRow(ni, cols[k], gridStep < 0 ? 'end' : 0);
       return;
     }
     if (e.key === 'Tab' && noMods && isMain && state.view === 'draft') {

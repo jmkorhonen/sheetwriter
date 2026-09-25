@@ -2,6 +2,9 @@
 
 One line per release; the commit under each tag has the details. Dates are the day the tag was pushed.
 
+## 0.19.8 (2026-09-25)
+Grid: Right arrow at the end of a cell's text moves to the next cell, Left arrow at its start to the previous one (wrapping across rows like Tab).
+
 ## 0.19.7 (2026-09-18)
 Draft: the side area spans the whole card height, so any spot right of the divider opens the side columns; the hint naming them only appears on hover.
 
