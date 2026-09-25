@@ -238,7 +238,7 @@ const Model = (() => {
     return {
       version: 1,
       mainColumn: 'text',
-      settings: { numbering: 'continuous', title: '', author: '', description: '', created: new Date().toISOString(), trackUpdated: false, trackAuthor: false, trackCounts: true, freezeColumns: 1, countColumns: [], widths: {}, wordTarget: 0, roles: { status: '', target: '' }, protectHeaders: true, contentsSheet: true, exportPresets: {}, rowDefaults: {}, view: defaultView(), extra: {} },
+      settings: { numbering: 'continuous', title: '', author: '', description: '', created: new Date().toISOString(), trackUpdated: false, trackAuthor: false, trackCounts: true, freezeColumns: 1, countColumns: [], widths: {}, wordTarget: 0, targetUnit: 'words', roles: { status: '', target: '' }, protectHeaders: true, contentsSheet: true, exportPresets: {}, rowDefaults: {}, view: defaultView(), extra: {} },
       sheets: [newChapter('Chapter 1')],
     };
   }
@@ -306,6 +306,8 @@ const Model = (() => {
   function statusColumn(doc, sheet) { return roleColumn(doc, sheet, 'status'); }
   /** Column holding per-section word targets (a number on a heading row). */
   function targetColumn(doc, sheet) { return roleColumn(doc, sheet, 'target'); }
+  /** What targets count: 'words' (default) or 'chars'; applies to section and workbook targets alike. */
+  function targetUnit(doc) { return doc.settings.targetUnit === 'chars' ? 'chars' : 'words'; }
   function rowTarget(doc, sheet, row) {
     const c = targetColumn(doc, sheet); if (!c) return 0;
     const n = parseInt(String(row[c] || '').replace(/\s/g, ''), 10);
@@ -328,7 +330,8 @@ const Model = (() => {
       s.rows.forEach((r, i) => {
         if (!SheetNumbering.headingLevel(r['.kind'])) return;
         const text = String(r[doc.mainColumn] || '').replace(/^#{1,6}[ \t]+/, '').trim();
-        entries.push({ si, i, level: num.levels[i], number: num.numbers[i], text: text || '(untitled)', words: sec[i] ? sec[i].words : rowCounts(doc, s, r).words, target: rowTarget(doc, s, r) });
+        const c = sec[i] || rowCounts(doc, s, r);
+        entries.push({ si, i, level: num.levels[i], number: num.numbers[i], text: text || '(untitled)', words: c.words, chars: c.chars, target: rowTarget(doc, s, r) });
       });
       out.push({ si, name: s.name, entries });
     });
@@ -817,7 +820,7 @@ const Model = (() => {
   return {
     RESERVED, META, COMPUTED, IDENT, KINDS, DEFAULT_COLUMNS, normKind, isHeading, indentOf, emptyRow, newChapter, newDoc, ensureIds, newId, ensureRowIds, newRowId,
     detectKindPrefix, detectIndentPrefix, stamp, isMeta, isComputed, isSystem, touch, ensureMetaColumns,
-    sectionEnd, sectionEnds, isCollapsible, blockOf, moveBlock, moveSection, shiftSectionLevels, siblingMoveTarget, statusColumn, targetColumn, rowTarget, roleColumn, suggestRole, colorIndex,
+    sectionEnd, sectionEnds, isCollapsible, blockOf, moveBlock, moveSection, shiftSectionLevels, siblingMoveTarget, statusColumn, targetColumn, targetUnit, rowTarget, roleColumn, suggestRole, colorIndex,
     chapterSheets, chapterIndex, numbering, countColumns, rowCounts, sectionCounts, userColumns, sideColumns, rowIsEmpty, tocEntries, headingFor,
     wordCount, charCount, sheetCounts, docCounts, sheetWords, docWords, safeFileName,
     addRow, deleteRow, moveRow, duplicateRow, splitRow, mergeRow, setCell, setIndent, shiftIndent, cycleKind, shiftKind,

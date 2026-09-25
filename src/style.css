@@ -272,6 +272,10 @@ dialog::backdrop { background: rgba(0,0,0,.25); }
 dialog .dlg { padding: 18px 22px; }
 dialog h2 { margin: 0 0 12px; font-size: 18px; }
 dialog h3 { margin: 14px 0 6px; font-size: 14px; }
+dialog h4 { margin: 12px 0 6px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); border-top: 1px solid var(--line); padding-top: 10px; }
+dialog .note { font-size: 12.5px; color: var(--muted); margin: 0; }
+dialog .fields label > .note:empty { display: none; }
+dialog .fields label > select, dialog .fields label > input[type=text] { width: 100%; box-sizing: border-box; }
 dialog .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px 16px; margin-bottom: 8px; }
 dialog .fields label { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--muted); }
 dialog .fields label.chk { grid-column: 1 / -1; flex-direction: row; align-items: flex-start; gap: 6px; color: var(--ink); }

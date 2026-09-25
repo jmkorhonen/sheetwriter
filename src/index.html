@@ -131,31 +131,42 @@
     <div class="fields">
       <label>Title <input type="text" id="st-title"></label>
       <label>Author <input type="text" id="st-author"></label>
+      <label>Numbering across sheets <select id="st-numbering"><option value="continuous">continue from sheet to sheet</option><option value="per-sheet">restart in each sheet</option></select></label>
       <label class="wide">Description <input type="text" id="st-description"></label>
-      <div class="wide"><div class="fieldlabel">Column roles: which of your columns the app treats specially. Any name works; columns starting with a dot are SheetWriter's own.</div></div>
+    </div>
+    <h4>Columns</h4>
+    <div class="fields">
       <label>Main text column ★ <select id="st-main"></select></label>
-      <label>Status column ● (coloured chips) <select id="st-role-status"></select><span class="muted" id="st-role-status-hint"></span></label>
-      <label>Target column ◎ (word targets on heading rows) <select id="st-role-target"></select><span class="muted" id="st-role-target-hint"></span></label>
-      <label>Numbering across sheets <select id="st-numbering"><option value="continuous">continue from the previous sheet</option><option value="per-sheet">restart in each sheet</option></select></label>
-      <label>Frozen columns in Grid <input type="number" id="st-freeze" min="0" max="10" step="1"></label>
-      <label>Word target for the workbook <input type="number" id="st-target" min="0" step="100" placeholder="none"></label>
+      <label>Status column ● <select id="st-role-status"></select><span class="note" id="st-role-status-hint"></span></label>
       <label>Defaults for new rows <input type="text" id="st-defaults" placeholder="status=todo; notes=…" title="column=value pairs separated by semicolons, filled into the side columns of rows you add"></label>
-      <label class="chk"><input type="checkbox" id="st-track-updated"> <span>Keep an <code>updated</code> column (time of last edit per row)</span></label>
-      <label class="chk"><input type="checkbox" id="st-track-author"> <span>Keep an <code>author</code> column (last editor per row, from Author above)</span></label>
+      <p class="note wide">Any column name works; the app treats a column specially by the role you give it here. Status values show as coloured chips on cards and tint Grid cells. Defaults are <code>column=value</code> pairs filled into rows you add. Columns starting with a dot are SheetWriter's own.</p>
+      <label class="chk"><input type="checkbox" id="st-track-updated"> <span>Keep an <code>.updated</code> column (time of last edit per row)</span></label>
+      <label class="chk"><input type="checkbox" id="st-track-author"> <span>Keep an <code>.author</code> column (last editor per row, from Author above)</span></label>
+    </div>
+    <h4>Counts and targets</h4>
+    <div class="fields">
+      <div class="wide"><div class="fieldlabel">Count words and characters in</div><div id="st-count" class="checks"></div></div>
+      <label>Target column ◎ <select id="st-role-target"></select><span class="note" id="st-role-target-hint"></span></label>
+      <label>Targets count <select id="st-target-unit"><option value="words">words</option><option value="chars">characters</option></select></label>
+      <label><span>Target for the workbook (<span id="st-target-unit-name">words</span>)</span> <input type="number" id="st-target" min="0" step="100" placeholder="none"></label>
+      <p class="note wide">A number in the target column on a heading row is the target for that section, shown on the card and in the contents pane; the workbook target shows in the status bar.</p>
+      <label class="chk"><input type="checkbox" id="st-track-counts"> <span>Keep <code>.words</code> and <code>.chars</code> columns (per-row counts, written on save; placed before <code>.updated</code> and <code>.author</code>)</span></label>
+    </div>
+    <h4>Grid and Excel</h4>
+    <div class="fields">
+      <label>Frozen columns <input type="number" id="st-freeze" min="0" max="10" step="1" title="Leading columns kept in view in the Grid view and in Excel"></label>
       <label class="chk"><input type="checkbox" id="st-protect"> <span>Protect the header row of chapter sheets in Excel (all data stays editable; Review → Unprotect Sheet to rename or remove columns there)</span></label>
       <label class="chk"><input type="checkbox" id="st-contents"> <span>Write a <code>.contents</code> sheet on save: every heading with its number, word count and a link to its row (for Excel; rewritten each time, not shown here)</span></label>
-      <label class="chk"><input type="checkbox" id="st-track-counts"> <span>Keep <code>words</code> and <code>chars</code> columns (per-row counts, written on save; placed before <code>updated</code> and <code>author</code>)</span></label>
-      <div class="wide"><div class="fieldlabel">Count words and characters in</div><div id="st-count" class="checks"></div></div>
     </div>
-    <p class="muted" style="font-size:12.5px;margin:4px 0 0">Stored in the protected <code>.sheetwriter</code> sheet inside the workbook, with created/modified dates and links to this editor. Extra rows you add to that sheet are kept. <span id="st-extra"></span></p>
+    <p class="note">Stored in the protected <code>.sheetwriter</code> sheet inside the workbook, with created/modified dates and links to this editor. Extra rows you add to that sheet are kept. <span id="st-extra"></span></p>
     <h3>Editor (this browser)</h3>
     <div class="fields">
       <label>Appearance <select id="st-theme"><option value="auto">follow the system</option><option value="light">light</option><option value="dark">dark</option></select></label>
-      <label>Enter key <select id="st-enter"><option value="row">Enter = new row, Shift+Enter = line break</option><option value="newline">Enter = line break, Shift+Enter = new row</option></select></label>
-      <label class="chk"><input type="checkbox" id="st-copy-enabled"> <span>Write an autosave copy to a second workbook every <select id="st-copy-minutes"><option value="1">1</option><option value="2">2</option><option value="5">5</option><option value="10">10</option></select> minutes while there are unsaved changes. File: <strong id="st-copy-name"></strong> <button type="button" class="small" id="st-copy-choose">Choose file…</button></span></label>
       <label>Indent when a row starts with <select id="st-indent"><option value="   ">three spaces</option><option value="  ">two spaces</option><option value="    ">four spaces</option><option value="> ">&gt; and a space</option><option value="">nothing (Tab only)</option></select></label>
+      <label>Enter key <select id="st-enter"><option value="row">new row (Shift: line break)</option><option value="newline">line break (Shift: new row)</option></select></label>
+      <label class="chk"><input type="checkbox" id="st-copy-enabled"> <span>Write an autosave copy to a second workbook every <select id="st-copy-minutes"><option value="1">1</option><option value="2">2</option><option value="5">5</option><option value="10">10</option></select> minutes while there are unsaved changes. File: <strong id="st-copy-name"></strong> <button type="button" class="small" id="st-copy-choose">Choose file…</button></span></label>
     </div>
-    <p class="muted" style="font-size:12.5px;margin:4px 0 0">The display state (view, sheet, row, table of contents, visible columns, counts) is saved with the workbook too, from the Columns ▾ and Contents buttons.</p>
+    <p class="note">The display state (view, sheet, row, table of contents, visible columns, counts) is saved with the workbook too, from the Columns ▾ and Contents buttons.</p>
     <div class="actions">
       <button type="button" data-close>Cancel</button>
       <button type="button" id="st-save" class="primary">Save settings</button>
@@ -239,6 +250,7 @@
       <tr><td>Ctrl+Shift+K</td><td>Delete row</td></tr>
       <tr><td>Ctrl+Shift+M</td><td>Move row (with sub-rows) to another chapter</td></tr>
       <tr><td>↑ / ↓</td><td>At the first/last line of a cell: move to the previous/next row</td></tr>
+      <tr><td>← / →, Tab</td><td>Grid: at the start/end of a cell's text, ← / → move to the previous/next cell; Tab and Shift+Tab always do. Both wrap to the next or previous row.</td></tr>
     </table>
     <h3>Selecting rows</h3>
     <table>
@@ -246,7 +258,6 @@
       <tr><td>Ctrl+Shift+↑ / ↓</td><td>Extend the selection from the row being edited.</td></tr>
       <tr><td>Ctrl+A</td><td>Select all rows (when no text field is focused).</td></tr>
       <tr><td>Ctrl+C / X / V / D, Delete</td><td>Copy, cut, paste, duplicate, delete the selected rows (when no text field is focused; the bar at the bottom has the same buttons). Pasting keeps every column, also into other sheets, and adds missing columns.</td></tr>
-      <tr><td>Esc</td><td>Clear the selection.</td></tr>
       <tr><td>Click elsewhere, Esc</td><td>Clear the selection.</td></tr>
       <tr><td>Drag a selected row</td><td>Move all selected rows together (drag the ⋮⋮ handle or the card itself; in Grid, the row), above or below another row, or onto another sheet's tab. Rows selected in a different order or with gaps arrive in sheet order, as one group.</td></tr>
     </table>
@@ -262,9 +273,9 @@
     <h3>Markdown import</h3>
     <p>The Import button, or drop a .md or .csv file on the window. A CSV or TSV table gives one row per line, with its text column (or the longest column) as the text and the other columns as side columns. For Markdown: one paragraph per row by default; files written one sentence per line are detected and imported line by line; a sentence mode splits paragraphs into p and s rows. Lists become indented rows, and the side-column blockquotes and comments that Export writes are read back into their columns, so export and import round-trip. Import into a new sheet, one sheet per h1, or the current sheet. Several files at once become several sheets.</p>
     <h3>Table of contents</h3>
-    <p>The Contents button opens a pane listing the headings of this sheet or of all sheets, with numbers and section word counts. Click a heading to jump to it in Draft, Grid or Read view; collapsed sections open on the way. The heading you are working under is highlighted. The pane is also an outliner: drag a heading to move its whole section above or below another heading, or onto a sheet name to move it to that sheet; the ◂ ▸ buttons that appear on hover promote or demote a section together with its sub-headings, ⤴ moves it to a new sheet; on a focused entry, Alt+↑/↓ moves the section past a sibling and Alt+Shift+←/→ promotes or demotes it.</p>
+    <p>The Contents button opens a pane listing the headings of this sheet or of all sheets, with numbers and section word counts (or characters against a character target). Click a heading to jump to it in Draft, Grid or Read view; collapsed sections open on the way. The heading you are working under is highlighted. The pane is also an outliner: drag a heading to move its whole section above or below another heading, or onto a sheet name to move it to that sheet; the ◂ ▸ buttons that appear on hover promote or demote a section together with its sub-headings, ⤴ moves it to a new sheet; on a focused entry, Alt+↑/↓ moves the section past a sibling and Alt+Shift+←/→ promotes or demotes it.</p>
     <h3>Status, targets, filter</h3>
-    <p>Settings → Column roles chooses which of your columns the app treats specially, whatever their names: the main text column (★), a status column (●) whose values show as coloured chips under each card and tint the Grid cell, and a target column (◎) whose number on a heading row sets a word target for that section, shown against the section count on the card and in the contents pane. Settings also holds a target for the whole workbook, shown in the status bar. The Filter button (Draft and Grid) hides rows that do not match: plain text, or <code>column:value</code> such as <code>status:todo</code>, <code>kind:h2</code> or <code>no:2.1</code>. Pasting rich text from Word or a browser into the import dialog converts it to Markdown.</p>
+    <p>Settings → Columns chooses which of your columns the app treats specially, whatever their names: the main text column (★) and a status column (●) whose values show as coloured chips under each card and tint the Grid cell. Settings → Counts and targets chooses the columns whose words and characters are counted, a target column (◎) whose number on a heading row sets a target for that section, shown against the section count on the card and in the contents pane, and a target for the whole workbook, shown in the status bar. Targets count words or characters, as chosen there. The Filter button (Draft and Grid) hides rows that do not match: plain text, or <code>column:value</code> such as <code>status:todo</code>, <code>kind:h2</code> or <code>no:2.1</code>. Pasting rich text from Word or a browser into the import dialog converts it to Markdown.</p>
     <h3>Grid, columns and tabs</h3>
     <p>Columns are shared by all chapter sheets: adding, renaming, deleting or reordering a column applies everywhere, and deleting warns if any sheet holds data in it. Click a column name to rename it, drag a column header to reorder, drag its right edge to resize. The – button hides a column in Grid view; the Columns ▾ button chooses which columns the Grid and Draft views show. Rows hide in Grid by collapsing (▾ in the number cell, Collapse all) or by typing in the filter box above the table. Double-click a sheet tab to rename it. Drag rows by the ⋮⋮ handle, drag tabs to reorder chapters. Click the title in the toolbar to change it.</p>
     <h3>Files</h3>

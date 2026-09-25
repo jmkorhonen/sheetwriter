@@ -84,9 +84,10 @@ const Views = (() => {
       const rc = Model.rowCounts(doc, sheet, row);
       parts.push(`${fmt(rc.words)} w · ${fmt(rc.chars)} c`);
       const sec = sections[i];
-      const target = Model.rowTarget(doc, sheet, row);
-      if (sec) parts.push(`section ${fmt(sec.words)}${target ? ` / ${fmt(target)}` : ''} w${target ? ` (${Math.round(100 * sec.words / target)} %)` : ''} · ${fmt(sec.chars)} c · ${sec.rows} rows`);
-      else if (target) parts.push(`target ${fmt(target)} w (${Math.round(100 * rc.words / target)} %)`);
+      const target = Model.rowTarget(doc, sheet, row), unit = Model.targetUnit(doc);
+      const of = u => target && unit === u ? ` / ${fmt(target)}` : '', pct = u => target && unit === u ? ` (${Math.round(100 * sec[u] / target)} %)` : '';
+      if (sec) parts.push(`section ${fmt(sec.words)}${of('words')} w${pct('words')} · ${fmt(sec.chars)}${of('chars')} c${pct('chars')} · ${sec.rows} rows`);
+      else if (target) parts.push(`target ${fmt(target)} ${unit === 'chars' ? 'c' : 'w'} (${Math.round(100 * rc[unit] / target)} %)`);
     }
     if (doc.settings.trackUpdated && row['.updated']) parts.push(row['.updated']);
     if (doc.settings.trackAuthor && row['.author']) parts.push(row['.author']);
@@ -296,7 +297,7 @@ const Views = (() => {
       } else {
         const titles = { '.no': 'Computed numbering, written to the file on save', '.kind': 'Row kind', '.indent': 'Indent level (Tab / Shift+Tab)', '.updated': 'Last edited (maintained by SheetWriter)', '.author': 'Last editor (maintained by SheetWriter)', '.words': 'Words in the counted columns (computed, written on save)', '.chars': 'Characters in the counted columns (computed, written on save)' };
         const role = isMain ? ' ★' : col === statusCol ? ' ●' : col === targetCol ? ' ◎' : '';
-        const roleTitle = isMain ? ' — main text column' : col === statusCol ? ' — status column (chips)' : col === targetCol ? ' — word targets' : '';
+        const roleTitle = isMain ? ' — main text column' : col === statusCol ? ' — status column (chips)' : col === targetCol ? ' — section targets' : '';
         th.appendChild(el('span', { class: 'colname' + (isRes || isMeta ? '' : ' editable'), 'data-col': col, title: (isRes || isMeta) ? titles[col] : 'Click to rename, drag the header to reorder (all sheets)' + roleTitle }, col, role));
       }
       if (!isRes && !isMeta) {
@@ -457,12 +458,13 @@ const Views = (() => {
       for (const e of g.entries) {
         any = true;
         const cur = ctx.current && ctx.current.si === e.si && ctx.current.i === e.i;
-        const over = e.target && e.words > e.target;
+        const unit = Model.targetUnit(ctx.doc), done = e[unit], u = unit === 'chars' ? 'c' : 'w';
+        const over = e.target && done > e.target;
         const item = el('button', { type: 'button', class: 'toc-item level-' + Math.min(e.level, 6) + (cur ? ' current' : ''), 'data-si': e.si, 'data-i': e.i, draggable: 'true',
-          title: e.text + (e.target ? ` — target ${fmt(e.target)} words` : '') + '\nClick to jump. Drag to move the section. Alt+↑/↓ move it past a sibling, Alt+Shift+←/→ promote or demote it.' },
+          title: e.text + (e.target ? ` — target ${fmt(e.target)} ${unit === 'chars' ? 'characters' : 'words'}` : '') + '\nClick to jump. Drag to move the section. Alt+↑/↓ move it past a sibling, Alt+Shift+←/→ promote or demote it.' },
           el('span', { class: 'toc-num' }, e.number),
           el('span', { class: 'toc-text' }, e.text),
-          ctx.showCounts ? el('span', { class: 'toc-count' + (over ? ' over' : '') }, e.target ? `${fmt(e.words)} / ${fmt(e.target)} w` : fmt(e.words) + ' w') : null);
+          ctx.showCounts ? el('span', { class: 'toc-count' + (over ? ' over' : '') }, e.target ? `${fmt(done)} / ${fmt(e.target)} ${u}` : fmt(e.words) + ' w') : null);
         list.appendChild(el('div', { class: 'toc-row', 'data-si': e.si, 'data-i': e.i }, item,
           el('span', { class: 'toc-ops' },
             el('button', { type: 'button', class: 'toc-op', 'data-op': 'promote', 'data-si': e.si, 'data-i': e.i, title: 'Promote this section: h2 → h1, and its sub-headings with it (Alt+Shift+←)' }, '◂'),

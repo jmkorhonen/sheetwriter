@@ -427,6 +427,10 @@ test('model: status column, targets, colour index', () => {
   doc.settings.roles.target = 'Tavoite';
   eq(Model.rowTarget(doc, s, s.rows[0]), 2000); eq(Model.rowTarget(doc, s, s.rows[1]), 0);
   eq(Model.tocEntries(doc, 0)[0].entries[0].target, 2000);
+  eq(Model.targetUnit(doc), 'words', 'targets count words by default');
+  doc.settings.targetUnit = 'chars'; eq(Model.targetUnit(doc), 'chars');
+  const e0 = Model.tocEntries(doc, 0)[0].entries[0];
+  eq(e0.chars, Model.sectionCounts(doc, s)[0].chars, 'contents entries carry section characters too');
 });
 
 // ---- blocks, docx, find ----
@@ -604,7 +608,7 @@ test('xlsx: save then load preserves rows, columns, settings, order; meta column
   const doc = sampleDoc(); doc.settings.trackUpdated = true; Model.ensureMetaColumns(doc);
   doc.settings.view = { mode: 'grid', sheet: 'Body', row: 1, toc: 'all', side: false, hidden: ['notes'], counts: false, gridHidden: ['sources', '.indent'] };
   doc.settings.widths = { text: 700, notes: 140 };
-  doc.settings.roles = { status: 'notes', target: '' };
+  doc.settings.roles = { status: 'notes', target: '' }; doc.settings.targetUnit = 'chars';
   Model.moveColumn(doc, 0, '.updated', -1); // put it before "sources" in the model; the file must still end with it
   doc.sheets[0].rows[4]['.indent'] = '1';
   const buf = await XlsxIO.save(doc, new Map());
@@ -620,6 +624,7 @@ test('xlsx: save then load preserves rows, columns, settings, order; meta column
   eq(d2.settings.numbering, 'continuous'); eq(d2.settings.trackUpdated, true); eq(d2.settings.trackAuthor, false);
   eq(d2.settings.freezeColumns, 1); eq(d2.settings.countColumns, []);
   eq(d2.settings.roles, { status: 'notes', target: '' }, 'column roles round-trip');
+  eq(d2.settings.targetUnit, 'chars', 'target unit round-trips');
   eq(d2.settings.view, { mode: 'grid', sheet: 'Body', row: 1, toc: 'all', side: false, hidden: ['notes'], counts: false, gridHidden: ['sources', '.indent'] }, 'display state round-trips');
   eq(d2.settings.widths, { text: 700, notes: 140 }, 'column widths round-trip');
   eq(Model.columnWidth(d2, 'text'), 700); eq(Model.columnWidth(d2, 'sources'), 200, 'default width');

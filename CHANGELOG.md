@@ -2,6 +2,9 @@
 
 One line per release; the commit under each tag has the details. Dates are the day the tag was pushed.
 
+## 0.20.0 (2026-09-25)
+Targets can count characters instead of words (Settings → Counts and targets; `target_unit` in `.sheetwriter`), for the section targets and the workbook target alike. Settings regrouped by function (Columns, Counts and targets, Grid and Excel) with aligned fields. Help: Grid arrow keys and Tab.
+
 ## 0.19.8 (2026-09-25)
 Grid: Right arrow at the end of a cell's text moves to the next cell, Left arrow at its start to the previous one (wrapping across rows like Tab).
 

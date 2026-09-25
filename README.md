@@ -30,7 +30,7 @@ Columns whose names start with a dot belong to SheetWriter. Every other column i
 | `.updated`, `.author` | Optional, maintained by the app when switched on in Settings. Written after the computed columns. |
 | `.id` | Six-character row id, written on save as the last, hidden column. It lets cell colours, fonts, borders and comments added in Excel follow the row through moves, sorts and edits. Rows copied in Excel get a fresh id on the next save. |
 | main text (★) | Your text column, `text` by default; any sheet with it is a chapter. |
-| status (●), target (◎) | Optional roles for two of your columns: coloured chips, and per-section word targets on heading rows. |
+| status (●), target (◎) | Optional roles for two of your columns: coloured chips, and per-section targets (words or characters) on heading rows. |
 | anything else | Yours: `notes`, `sources`, `examples`… |
 
 Files written before 0.10 used bare names (`kind`, `no`, …); they load as before and are written with the dotted names on the next save.
@@ -58,7 +58,8 @@ Numbering continues from sheet to sheet by default, so sheets are containers rat
 | Key | Action |
 |---|---|
 | Enter | New row (at the end of the text), row above (at the start), split (in the middle). Shift+Enter is a line break. Swap the two in Settings. |
-| Tab / Shift+Tab | Indent / outdent (Draft view). Also Ctrl+] / Ctrl+[, or type three spaces at the start of a row. |
+| Tab / Shift+Tab | Indent / outdent (Draft view); next / previous cell (Grid). Also Ctrl+] / Ctrl+[, or type three spaces at the start of a row, to indent. |
+| ↑ / ↓, ← / → | At the first / last line of a cell, ↑ / ↓ move to the previous / next row. In Grid, ← / → at the start / end of a cell's text move to the previous / next cell. |
 | `# `, `## `… | Typed at the start of a row: make it a heading. |
 | Alt+↑ / Alt+↓ | Move the row with its sub-rows past the previous / next sibling. |
 | Alt+Shift+← / → | Promote / demote: h1 ← h2 ← h3 ← h4 ← p ← s. |
@@ -93,7 +94,7 @@ Press `?` in the toolbar or F1 for the full list.
 - **Sheets**: right-click a tab (or its ▾) to rename, move, delete, or merge a chapter into the previous one. The Contents pane's ⤴ button splits a section off into its own sheet.
 - **Defaults for new rows** (Settings): `column=value` pairs such as `status=todo` filled into the side columns of every row you add or split off, so status chips are used consistently.
 - **Long workbooks**: above 400 rows the Draft and Read views lay out only the blocks near the viewport, so sheets of several thousand rows stay responsive; Grid view renders every cell and takes about a second per thousand rows.
-- **Status and targets**: the column given the status role shows coloured chips on cards and tints Grid cells; the target column's number on a heading row sets a word target for that section, and Settings holds one for the workbook. The Filter button hides rows by text or `column:value` in Draft and Grid.
+- **Status and targets**: the column given the status role shows coloured chips on cards and tints Grid cells; the target column's number on a heading row sets a target for that section, and Settings holds one for the workbook; targets count words or characters, as chosen in Settings → Counts and targets. The Filter button hides rows by text or `column:value` in Draft and Grid.
 - **Formatting keys**: Ctrl+B, Ctrl+I and Ctrl+K wrap the selection in Markdown bold, italic or a link. Pasting rich text from Word or a browser into the import dialog converts it to Markdown.
 - **Appearance**: light, dark or follow the system, in Settings. Read view has a print stylesheet.
 - **Export Markdown** (Export button or Ctrl+E): any column as one document, whole workbook or one chapter, with the same options plus a side column as blockquotes, hidden comments or footnotes.

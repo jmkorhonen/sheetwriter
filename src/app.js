@@ -453,8 +453,9 @@
       parts.push(`Chapter: ${fmt(c.rows)} rows, ${fmt(c.words)} words, ${fmt(c.chars)} chars`);
     }
     const d = Model.docCounts(doc);
-    const tgt = doc.settings.wordTarget || 0;
-    parts.push(`Workbook: ${fmt(d.rows)} rows, ${fmt(d.words)}${tgt ? ` / ${fmt(tgt)}` : ''} words${tgt ? ` (${Math.round(100 * d.words / tgt)} %)` : ''}, ${fmt(d.chars)} chars`);
+    const tgt = doc.settings.wordTarget || 0, unit = Model.targetUnit(doc);
+    const of = u => tgt && unit === u ? ` / ${fmt(tgt)}` : '', pct = u => tgt && unit === u ? ` (${Math.round(100 * d[u] / tgt)} %)` : '';
+    parts.push(`Workbook: ${fmt(d.rows)} rows, ${fmt(d.words)}${of('words')} words${pct('words')}, ${fmt(d.chars)}${of('chars')} chars${pct('chars')}`);
     parts.push(hasFS ? 'direct file access' : 'download mode');
     if (state.copyHandle && prefs.autosaveCopy.enabled) {
       const p = n => String(n).padStart(2, '0');
@@ -1779,6 +1780,10 @@
     $('#st-enter').value = prefs.enterMode;
     $('#st-theme').value = prefs.theme || 'auto';
     $('#st-target').value = d.settings.wordTarget || '';
+    const unitSel = $('#st-target-unit');
+    unitSel.value = Model.targetUnit(d);
+    unitSel.onchange = () => { $('#st-target-unit-name').textContent = unitSel.value === 'chars' ? 'characters' : 'words'; $('#st-target').step = unitSel.value === 'chars' ? 1000 : 100; };
+    unitSel.onchange();
     $('#st-defaults').value = Model.pairsText(d.settings.rowDefaults);
     $('#st-copy-enabled').checked = !!prefs.autosaveCopy.enabled;
     $('#st-copy-minutes').value = String(prefs.autosaveCopy.minutes || 2);
@@ -1816,6 +1821,7 @@
         numbering: $('#st-numbering').value, freezeColumns: Math.max(0, Math.min(10, parseInt($('#st-freeze').value, 10) || 0)),
         countColumns: countSel.length === 1 && countSel[0] === sel.value ? [] : countSel,
         wordTarget: Math.max(0, parseInt(String($('#st-target').value).replace(/\s/g, ''), 10) || 0),
+        targetUnit: unitSel.value === 'chars' ? 'chars' : 'words',
         rowDefaults: Model.parsePairs($('#st-defaults').value),
         roles: { status: $('#st-role-status').value, target: $('#st-role-target').value },
         protectHeaders: $('#st-protect').checked, contentsSheet: $('#st-contents').checked,
