@@ -2,6 +2,9 @@
 
 One line per release; the commit under each tag has the details. Dates are the day the tag was pushed.
 
+## 0.20.1 (2026-09-28)
+Grid: a click anywhere in a cell opens it for editing, also below the text of a short or empty cell in a tall row.
+
 ## 0.20.0 (2026-09-25)
 Targets can count characters instead of words (Settings → Counts and targets; `target_unit` in `.sheetwriter`), for the section targets and the workbook target alike. Settings regrouped by function (Columns, Counts and targets, Grid and Excel) with aligned fields. Help: Grid arrow keys and Tab.
 
