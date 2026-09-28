@@ -2,6 +2,9 @@
 
 One line per release; the commit under each tag has the details. Dates are the day the tag was pushed.
 
+## 0.21.1 (2026-09-28)
+The contents pane can be resized by dragging its right edge (remembered in the browser; double-click resets).
+
 ## 0.21.0 (2026-09-28)
 Grid: an Excel-like cell cursor. Esc leaves the cell being edited for the highlighted cell; arrows, Tab, Home / End, Ctrl+Home / End and PageUp / PageDown move it; Enter or F2 edits, and typing starts editing at the end of the text.
 

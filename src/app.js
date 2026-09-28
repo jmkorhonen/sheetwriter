@@ -1191,6 +1191,31 @@
     if (e.key === 'F1') { e.preventDefault(); $('#dlg-help').showModal(); }
   });
 
+  // ---------- contents pane width (drag its right edge; kept in this browser) ----------
+  const TOC_MIN = 160, tocMax = () => Math.max(TOC_MIN, Math.min(720, Math.round(window.innerWidth * 0.6)));
+  function applyTocWidth() {
+    const w = prefs.tocWidth ? Math.max(TOC_MIN, Math.min(tocMax(), prefs.tocWidth)) : null;
+    if (w) document.documentElement.style.setProperty('--toc-w', w + 'px'); else document.documentElement.style.removeProperty('--toc-w');
+  }
+  applyTocWidth();
+  const tocResize = $('#toc-resize');
+  tocResize.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    tocResize.setPointerCapture(e.pointerId);
+    const startX = e.clientX, startW = tocRoot.getBoundingClientRect().width;
+    document.body.classList.add('toc-resizing');
+    const move = ev => { prefs.tocWidth = Math.round(startW + ev.clientX - startX); applyTocWidth(); };
+    const up = () => {
+      tocResize.removeEventListener('pointermove', move); tocResize.removeEventListener('pointerup', up); tocResize.removeEventListener('pointercancel', up);
+      document.body.classList.remove('toc-resizing');
+      prefs.tocWidth = Math.round(tocRoot.getBoundingClientRect().width); savePrefs();
+    };
+    tocResize.addEventListener('pointermove', move); tocResize.addEventListener('pointerup', up); tocResize.addEventListener('pointercancel', up);
+  });
+  tocResize.addEventListener('dblclick', () => { delete prefs.tocWidth; savePrefs(); applyTocWidth(); });
+  window.addEventListener('resize', applyTocWidth);
+
   // ---------- toolbar ----------
   $('#btn-new').onclick = () => { if (!confirmDiscard()) return; loadDoc(Model.newDoc(), 'untitled.xlsx', null, new Map()); };
   $('#btn-open').onclick = () => openFile();
