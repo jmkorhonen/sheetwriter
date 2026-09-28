@@ -153,6 +153,7 @@ table.grid tr.selected td { background: var(--sel); }
 .mainwrap textarea { display: none; }
 .mainwrap.editing .rendered, .mainwrap.empty .rendered { display: none; }
 .mainwrap.editing textarea, .mainwrap.empty textarea { display: block; }
+table.grid td:has(> .mainwrap) { cursor: text; }
 table.grid td .mainwrap .rendered { font-family: inherit; font-size: 13.5px; line-height: 1.4; padding: 2px 4px; min-height: 1.4em; }
 table.grid td.main .mainwrap .rendered { font-family: var(--serif); font-size: 14.5px; }
 table.grid td .mainwrap .rendered p { margin: 0 0 .3em; }

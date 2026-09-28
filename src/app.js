@@ -627,10 +627,12 @@
     }
   });
   viewRoot.addEventListener('click', e => {
+    // A click on the rendered text, or anywhere else in a Grid cell (such as the space below a short or empty cell), opens it for editing.
     const r = e.target.closest('.rendered');
-    if (r) {
+    const gridTd = !r && !e.target.closest('textarea') && e.target.closest('table.grid td');
+    const mw = r ? r.closest('.mainwrap') : gridTd && gridTd.querySelector(':scope > .mainwrap');
+    if (mw) {
       if (e.target.closest('a')) return; // let links work
-      const mw = r.closest('.mainwrap');
       const t = mw.querySelector('textarea');
       mw.classList.add('editing');
       Views.autosize(t);
