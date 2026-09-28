@@ -2,6 +2,9 @@
 
 One line per release; the commit under each tag has the details. Dates are the day the tag was pushed.
 
+## 0.21.0 (2026-09-28)
+Grid: an Excel-like cell cursor. Esc leaves the cell being edited for the highlighted cell; arrows, Tab, Home / End, Ctrl+Home / End and PageUp / PageDown move it; Enter or F2 edits, and typing starts editing at the end of the text.
+
 ## 0.20.1 (2026-09-28)
 Grid: a click anywhere in a cell opens it for editing, also below the text of a short or empty cell in a tall row.
 
