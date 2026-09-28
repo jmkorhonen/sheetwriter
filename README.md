@@ -57,6 +57,7 @@ Numbering continues from sheet to sheet by default, so sheets are containers rat
 
 | Key | Action |
 |---|---|
+| Esc (Grid) | Leave the cell for an Excel-like cell cursor: arrows, Tab, Home / End move it; Enter or F2 edits; typing starts editing at the end of the text. |
 | Enter | New row (at the end of the text), row above (at the start), split (in the middle). Shift+Enter is a line break. Swap the two in Settings. |
 | Tab / Shift+Tab | Indent / outdent (Draft view); next / previous cell (Grid). Also Ctrl+] / Ctrl+[, or type three spaces at the start of a row, to indent. |
 | ↑ / ↓, ← / → | At the first / last line of a cell, ↑ / ↓ move to the previous / next row. In Grid, ← / → at the start / end of a cell's text move to the previous / next cell. |
@@ -80,7 +81,7 @@ Press `?` in the toolbar or F1 for the full list.
 ## Views and export
 
 - **Draft**: one card per row, Markdown rendered when the row is not being edited, side columns to the right (empty ones appear when the card is focused). A small grey line under each card shows the row's words and characters, the total of everything a heading, paragraph group or indented group owns, and the last edit when tracking is on.
-- **Grid**: every column as a table, frozen header and number column, drag handles, inline column renaming, drag a header to reorder. Cells show their Markdown rendered and open for editing on a click anywhere in the cell; Tab and Shift+Tab move between cells, as do Right and Left arrows at the end or start of a cell's text. Columns are shared by all chapter sheets: adding, renaming, deleting or reordering applies everywhere, and deleting warns if any sheet holds data in the column.
+- **Grid**: every column as a table, frozen header and number column, drag handles, inline column renaming, drag a header to reorder. Cells show their Markdown rendered and open for editing on a click anywhere in the cell; Esc leaves a cell for an Excel-like cell cursor moved with the arrow keys, and Enter edits again; Tab and Shift+Tab move between cells, as do Right and Left arrows at the end or start of a cell's text. Columns are shared by all chapter sheets: adding, renaming, deleting or reordering applies everywhere, and deleting warns if any sheet holds data in the column.
 - **Columns ▾** chooses which side columns and counts the Draft view shows. This display state, with the current view, sheet, row and table of contents, is saved in the workbook and restored when the file is opened again. Click the title in the toolbar to change it.
 - **Read**: the text as flowing prose, with numbering none / headings / all and indented rows as paragraphs or nested lists.
 - **Contents**: a pane listing the headings of this sheet or of all sheets, with numbers and section word counts. Click to jump; the heading you are working under is highlighted. The pane is also an outliner: drag a heading to move its whole section, above or below another heading or onto a sheet name to move it to that sheet; the ◂ ▸ buttons promote or demote a section with its sub-headings, ⤴ moves it to a new sheet named after the heading; on a focused entry, Alt+↑/↓ moves the section past a sibling and Alt+Shift+←/→ promotes or demotes it.

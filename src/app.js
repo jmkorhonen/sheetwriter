@@ -13,7 +13,7 @@
     doc: Model.ensureIds(Model.newDoc()), si: 0, view: 'draft', showSide: true,
     fileHandle: null, fileName: 'untitled.xlsx', sources: new Map(), formats: new Map(), dirty: false,
     readScope: 'sheet', readNumbering: '', readColumn: null, readIndented: 'paragraphs',
-    focus: null, lastFocus: null, readPos: null,
+    focus: null, lastFocus: null, readPos: null, cursor: null,
     fileMtime: null, savedAt: null, copyHandle: null, copyName: '', copyAt: null, copyNeedsPermission: false,
     collapsed: new Set(), editColumn: null, editSheet: null,
     sel: new Set(), selAnchor: null, clipboard: null, // row selection (ids, current sheet) and the internal row clipboard
@@ -67,6 +67,7 @@
       // Rebuilding the DOM resets the scroll position; keep it when staying in the same view and sheet.
       const sameplace = renderedView === state.view && renderedSi === state.si;
       if (renderedSi !== null && renderedSi !== state.si) { state.sel.clear(); state.selAnchor = null; } // selection is per sheet
+      const cursorHadFocus = !!(document.activeElement && document.activeElement.matches && document.activeElement.matches('#view .scroll'));
       const sc = sameplace ? scroller() : null;
       const top = sc ? sc.scrollTop : 0;
       Views.renderTabs(tabsRoot, ctx());
@@ -88,6 +89,7 @@
       renderToc();
       renderStatus();
       renderSelBar();
+      paintCursor(cursorHadFocus);
       applyFocus();
     } finally { rendering = false; }
   }
@@ -221,6 +223,7 @@
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && state.sel.size) { clearSelection(); return; }
     const t = e.target;
+    if (e.key === 'Escape' && state.view === 'grid' && isChapter() && (t === document.body || t === viewRoot) && !document.querySelector('dialog[open]')) { startCursor(); return; }
     if (t && t.matches && t.matches('textarea, input, select')) return;
     if (document.querySelector('dialog[open]')) return;
     if (!isChapter()) return;
@@ -590,6 +593,7 @@
     if (!t.matches('textarea.cell')) return;
     const i = rowIndexOf(t);
     state.lastFocus = { i, col: t.dataset.col, caret: t.selectionStart };
+    if (state.view === 'grid' && i != null && sheet().rows[i]) { state.cursor = { id: sheet().rows[i]._id, col: t.dataset.col }; paintCursor(); }
     const mw = t.closest('.mainwrap');
     if (mw) { mw.classList.add('editing'); Views.autosize(t); }
     renderStatus();
@@ -751,6 +755,83 @@
     if (!changed) applyFocus();
   }
 
+  // ---------- Grid cell cursor ----------
+  // An Excel-like highlighted cell: arrows move it, Enter or F2 (or typing) edits the cell, Esc in a cell returns to it.
+  // It follows the cell being edited; while no cell is edited, the grid's scroll box holds the keyboard focus.
+  /** Editable Grid columns, in display order (the ones Tab and the cursor step through). */
+  function gridCols() {
+    const s = sheet(), main = state.doc.mainColumn, hidden = state.ui.gridHidden;
+    return s.columns.filter(c => (c === main || !hidden.has(c)) && !Model.isSystem(state.doc, c));
+  }
+  /** Grid rows shown on screen (not collapsed away, not filtered out), in order. */
+  function gridRowEls() { return [...viewRoot.querySelectorAll('table.grid tr[data-i]')].filter(tr => !tr.classList.contains('filtered')); }
+  function cursorCell() {
+    const c = state.cursor; if (!c || state.view !== 'grid' || !isChapter()) return null;
+    const rows = sheet().rows; if (!rows.length) return null;
+    let i = rows.findIndex(r => r._id === c.id);
+    if (i < 0) { i = Math.min(c.i || 0, rows.length - 1); c.id = rows[i]._id; } // the row went away (an empty row left with Esc): stay at its place
+    const t = viewRoot.querySelector(`table.grid tr[data-i="${i}"] textarea[data-col="${CSS.escape(c.col)}"]`);
+    c.i = i;
+    return t ? { i, t, td: t.closest('td'), tr: t.closest('tr') } : null;
+  }
+  /** Mark the cursor cell; with focus, give the keyboard to the grid so the arrow keys move the cursor. */
+  function paintCursor(focus) {
+    viewRoot.querySelectorAll('td.cursor').forEach(n => n.classList.remove('cursor'));
+    const cc = cursorCell(); if (!cc) return;
+    cc.td.classList.add('cursor');
+    if (focus) {
+      const sc = viewRoot.querySelector('.scroll');
+      sc.tabIndex = -1; sc.focus({ preventScroll: true });
+      cc.td.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+  }
+  function setCursor(id, col, focus) { state.cursor = { id, col }; paintCursor(focus); }
+  /** Give the keyboard to the cursor: where it was, else on the cell last edited, else the first cell. */
+  function startCursor() {
+    if (cursorCell()) { paintCursor(true); return; }
+    const f = state.lastFocus, rows = sheet().rows, cols = gridCols();
+    const i = f && rows[f.i] ? f.i : gridRowEls().length ? +gridRowEls()[0].dataset.i : null;
+    if (i == null || !cols.length) return;
+    setCursor(rows[i]._id, f && cols.includes(f.col) ? f.col : state.doc.mainColumn, true);
+  }
+  viewRoot.addEventListener('keydown', e => {
+    if (!e.target.matches || !e.target.matches('#view.view-grid .scroll')) return;
+    const cc = cursorCell(); if (!cc) return;
+    const cols = gridCols(), trs = gridRowEls(), rows = sheet().rows;
+    const r = trs.indexOf(cc.tr), k = cols.indexOf(state.cursor.col);
+    const noMods = !e.ctrlKey && !e.altKey && !e.metaKey;
+    const go = (ri, ki) => {
+      e.preventDefault();
+      const tr = trs[Math.max(0, Math.min(trs.length - 1, ri))], col = cols[Math.max(0, Math.min(cols.length - 1, ki))];
+      if (tr && col) setCursor(rows[+tr.dataset.i]._id, col, true);
+    };
+    if (noMods && !e.shiftKey) {
+      if (e.key === 'ArrowUp') return go(r - 1, k);
+      if (e.key === 'ArrowDown') return go(r + 1, k);
+      if (e.key === 'ArrowLeft') return go(r, k - 1);
+      if (e.key === 'ArrowRight') return go(r, k + 1);
+      if (e.key === 'Home') return go(r, 0);
+      if (e.key === 'End') return go(r, cols.length - 1);
+      if (e.key === 'PageUp' || e.key === 'PageDown') {
+        const n = Math.max(1, Math.floor(e.target.clientHeight / Math.max(20, cc.tr.offsetHeight)));
+        return go(r + (e.key === 'PageUp' ? -n : n), k);
+      }
+    }
+    if (e.ctrlKey && !e.altKey && !e.shiftKey && (e.key === 'Home' || e.key === 'End')) return go(e.key === 'Home' ? 0 : trs.length - 1, k);
+    if (e.key === 'Tab' && !e.ctrlKey && !e.altKey) {
+      if (e.shiftKey) return k > 0 ? go(r, k - 1) : go(r - 1, cols.length - 1);
+      return k < cols.length - 1 ? go(r, k + 1) : go(r + 1, 0);
+    }
+    if ((e.key === 'Enter' || e.key === 'F2') && noMods && !e.shiftKey) { e.preventDefault(); focusRow(cc.i, state.cursor.col, 'end'); return; }
+    // Typing a character starts editing the cell, adding to its end (Excel would replace the content; here text is too precious).
+    if (noMods && e.key.length === 1 && !state.sel.size) {
+      e.preventDefault();
+      focusRow(cc.i, state.cursor.col, 'end');
+      const t = document.activeElement;
+      if (t && t.matches('textarea.cell')) { t.setRangeText(e.key, t.value.length, t.value.length, 'end'); t.dispatchEvent(new Event('input', { bubbles: true })); }
+    }
+  });
+
   // ---------- keyboard inside cells ----------
   viewRoot.addEventListener('keydown', e => {
     const t = e.target;
@@ -760,6 +841,7 @@
     const s = sheet(), row = s.rows[i];
     const noMods = !e.ctrlKey && !e.altKey && !e.metaKey;
     const caret = t.selectionStart;
+    if (e.key === 'Escape' && state.view === 'grid') { e.preventDefault(); setCursor(row._id, col, true); return; }
 
     if (e.key === 'Enter' && noMods) {
       const newRow = prefs.enterMode === 'newline' ? e.shiftKey : !e.shiftKey;
@@ -790,8 +872,7 @@
       : noMods && !e.shiftKey && caret === t.selectionEnd && (e.key === 'ArrowLeft' && caret === 0 || e.key === 'ArrowRight' && caret === t.value.length) ? (e.key === 'ArrowLeft' ? -1 : 1)
       : 0;
     if (gridStep) {
-      const hidden = state.ui.gridHidden;
-      const cols = s.columns.filter(c => (c === main || !hidden.has(c)) && !Model.isSystem(state.doc, c));
+      const cols = gridCols();
       let k = cols.indexOf(col) + gridStep, ni = i;
       if (k >= cols.length) { k = 0; ni = nextVisibleAfter(i + 1); } else if (k < 0) { k = cols.length - 1; ni = prevVisible(i); }
       if (e.key === 'Tab' || ni != null && cols[k]) e.preventDefault();
