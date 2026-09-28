@@ -58,8 +58,12 @@ article.read .rside blockquote { margin-top: -.6em; }
 /* ---- layout ---- */
 #workspace { flex: 1; display: flex; min-height: 0; }
 #view { flex: 1; min-width: 0; overflow: auto; padding: 10px 0 40vh; }
-#toc { display: none; width: 290px; flex: none; flex-direction: column; border-right: 1px solid var(--line); background: var(--paper); overflow: auto; }
+#toc { display: none; width: var(--toc-w, 290px); flex: none; flex-direction: column; border-right: 1px solid var(--line); background: var(--paper); overflow: auto; }
 body.toc-open #toc { display: flex; }
+#toc-resize { display: none; flex: none; width: 7px; margin: 0 -4px 0 -3px; position: relative; z-index: 4; cursor: col-resize; touch-action: none; }
+body.toc-open #toc-resize { display: block; }
+#toc-resize:hover, body.toc-resizing #toc-resize { background: linear-gradient(to right, transparent 2px, var(--accent) 2px, var(--accent) 4px, transparent 4px); }
+body.toc-resizing, body.toc-resizing * { cursor: col-resize !important; user-select: none; }
 #toolbar #btn-toc.active { background: var(--accent-soft); border-color: var(--accentline); color: var(--accent); }
 .toc-head { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--paper); z-index: 1; }
 .toc-title { font-weight: 600; flex: 1; }
@@ -412,6 +416,7 @@ article.read.long .rblock { content-visibility: auto; contain-intrinsic-size: au
   #status { font-size: 11px; }
   /* the contents pane floats over the text instead of squeezing it; it closes when an entry is chosen */
   #workspace { position: relative; }
+  body.toc-open #toc-resize { display: none; }
   #toc { position: absolute; left: 0; top: 0; bottom: 0; width: min(86vw, 340px); z-index: 20; box-shadow: 4px 0 16px rgba(0,0,0,.18); }
   .card { grid-template-columns: 92px 1fr; padding-right: 4px; }
   .card.with-side { grid-template-columns: 92px 1fr; }
