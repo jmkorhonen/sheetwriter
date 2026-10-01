@@ -207,6 +207,17 @@
   </form>
 </dialog>
 
+<dialog id="dlg-link">
+  <form method="dialog" class="dlg">
+    <h2>Open from a link</h2>
+    <p id="link-msg"></p>
+    <div class="actions">
+      <button type="button" data-close>Cancel</button>
+      <button type="button" id="link-open" class="primary">Open</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="dlg-ask">
   <form method="dialog" class="dlg">
     <h2 id="ask-label">Name</h2>
@@ -285,6 +296,7 @@
     <p>Recent ▾ → Snapshots and compare… keeps named copies of the workbook in this browser and compares the editor with a snapshot, with the saved file, or with another workbook: rows added, removed or changed, with word-level differences, grouped by sheet. Click a row in the list to go to it.</p>
     <p>Editing in Excel: the <code>.sheetwriter</code> sheet ends with instructions on what is safe (text, rows, sorting, <code>.kind</code>, <code>.indent</code>, your own columns), what is kept (cell colours, borders, comments and fonts follow the row through a hidden <code>.id</code> column), what is lost on the next save (formulas, number formats, row heights on chapter sheets) and what breaks the structure (renaming dotted columns or the text column, merged cells). Chapter sheets have only their header row protected; everything else is editable, and Review → Unprotect Sheet lifts it.</p>
     <p>Formats: the workbook is saved as <code>.xlsx</code> or, when the file name ends in <code>.ods</code>, as an OpenDocument spreadsheet for LibreOffice, with the same sheets, settings and contents. Both open. Formatting of data sheets is only carried through for <code>.xlsx</code>, and <code>.ods</code> files have no frozen panes.</p>
+    <p>Links from notes apps such as Obsidian: Recent ▾ → Copy link to this workbook (or a Markdown link, or one to the row you are in) gives a web address that opens this workbook in SheetWriter, at that row if chosen. A web page cannot open a file by its path, so the link finds the file in this browser's Recent list, by an id kept in <code>.sheetwriter</code> (so renaming the file is fine) or else by name. It works in Edge and Chrome, in the browser where the file was opened before; after a browser restart one click gives SheetWriter access to the file again. Elsewhere the link asks you to open the file once.</p>
     <p>In Edge and Chrome the app opens and saves the .xlsx in place and keeps a Recent list. In Firefox and Safari, Open uses a file picker and Save downloads a copy. Unsaved work is also kept in the browser and offered back on the next start. Sheets without a main text column are data sheets: shown read-only, written back unchanged. A workbook edited or sorted in Excel is put back in <code>no</code> order on load; rows without a number go last. A plain spreadsheet without a <code>text</code> column is imported using its longest text column.</p>
     <div class="actions"><button type="button" data-close class="primary">Close</button></div>
   </form>

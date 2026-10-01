@@ -2,6 +2,9 @@
 
 One line per release; the commit under each tag has the details. Dates are the day the tag was pushed.
 
+## 0.22.0 (2026-10-01)
+Links that open a workbook, for Obsidian and other notes apps: Recent ▾ → Copy link to this workbook, as a Markdown link, or to the current row. Links find the file in the browser's Recent list (now 20 entries) by a new `workbook_id` in `.sheetwriter`, or by name; Edge and Chrome.
+
 ## 0.21.1 (2026-09-28)
 The contents pane can be resized by dragging its right edge (remembered in the browser; double-click resets).
 

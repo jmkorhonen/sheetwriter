@@ -36,6 +36,7 @@ const XlsxIO = (() => {
     view_hidden_columns: 'Side columns hidden in Draft view (comma-separated)',
     view_counts: 'yes/no: show word and character counts under each card in Draft view',
     view_grid_hidden_columns: 'Columns hidden in Grid view (comma-separated)',
+    workbook_id: 'This workbook\'s id; links made with Recent ▾ → Copy link use it to find the file again',
     created: 'First saved (ISO date)',
     modified: 'Last saved by SheetWriter (ISO date)',
     app: 'Editor that wrote this workbook',
@@ -159,6 +160,7 @@ const XlsxIO = (() => {
         case 'view_counts': doc.settings.view.counts = yes(value); break;
         case 'view_grid_hidden_columns': doc.settings.view.gridHidden = value.split(/[,;]/).map(s => s.trim()).filter(Boolean); break;
         case 'created': if (value) doc.settings.created = value; break;
+        case 'workbook_id': if (/^[a-z0-9]{6,40}$/i.test(value.trim())) doc.settings.id = value.trim(); break;
         case 'modified': case 'app': break;
         default:
           if (LINK_KEYS.includes(key)) break;
@@ -201,6 +203,7 @@ const XlsxIO = (() => {
       ['view_counts', view.counts === false ? 'no' : 'yes'],
       ['view_grid_hidden_columns', (view.gridHidden || []).join(', ')],
       ['created', doc.settings.created || now],
+      ['workbook_id', doc.settings.id || ''],
       ['modified', now],
       ['app', `${APP.name} ${APP.version}`],
       ['app_url', APP.site],

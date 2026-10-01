@@ -625,6 +625,7 @@ test('xlsx: save then load preserves rows, columns, settings, order; meta column
   eq(d2.settings.freezeColumns, 1); eq(d2.settings.countColumns, []);
   eq(d2.settings.roles, { status: 'notes', target: '' }, 'column roles round-trip');
   eq(d2.settings.targetUnit, 'chars', 'target unit round-trips');
+  ok(/^[a-z0-9]{12}$/.test(doc.settings.id), 'a new workbook has an id'); eq(d2.settings.id, doc.settings.id, 'workbook id round-trips');
   eq(d2.settings.view, { mode: 'grid', sheet: 'Body', row: 1, toc: 'all', side: false, hidden: ['notes'], counts: false, gridHidden: ['sources', '.indent'] }, 'display state round-trips');
   eq(d2.settings.widths, { text: 700, notes: 140 }, 'column widths round-trip');
   eq(Model.columnWidth(d2, 'text'), 700); eq(Model.columnWidth(d2, 'sources'), 200, 'default width');
