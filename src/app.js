@@ -1365,6 +1365,7 @@
       state.fileMtime = handle ? (mtime || null) : null;
       state.savedAt = mtime || null; renderStatus();
       if (handle) { addRecent(name, handle); loadCopyHandle(name); }
+      if (pendingLink) followLink(pendingLink, name);
       if (warnings.length) alert(warnings.join('\n'));
     } catch (e) {
       console.error(e);
@@ -1372,6 +1373,7 @@
     }
   }
   function loadDoc(doc, name, handle, sources, formats) {
+    if (!doc.settings.id) doc.settings.id = Model.newWorkbookId(); // written on the next save
     state.doc = Model.ensureIds(doc); state.fileName = name; state.fileHandle = handle; state.sources = sources || new Map(); state.formats = formats || new Map();
     state.si = doc.sheets.findIndex(s => s.kind === 'chapter'); if (state.si < 0) state.si = 0;
     state.dirty = false; state.lastFocus = null; state.readPos = null; state.collapsed.clear(); state.editColumn = null; state.editSheet = null;
@@ -1508,15 +1510,17 @@
   }
 
   // ---------- recent files (file handles kept in IndexedDB; Chromium only) ----------
+  const RECENT_MAX = 20;
   async function addRecent(name, handle) {
     if (!handle) return;
+    const id = state.doc.settings.id || '';
     try {
       let list = (await idb.get('recents')) || [];
       const same = [];
       for (const r of list) { try { if (r.handle && await r.handle.isSameEntry(handle)) same.push(r); } catch (e) { /* ignore */ } }
       list = list.filter(r => !same.includes(r));
-      list.unshift({ name, handle, at: Date.now() });
-      await idb.set('recents', list.slice(0, 10));
+      list.unshift({ name, handle, id, at: Date.now() });
+      await idb.set('recents', list.slice(0, RECENT_MAX));
     } catch (e) { /* handles not storable */ }
   }
   async function recentMenu(anchor) {
@@ -1528,21 +1532,101 @@
     if (!list.length) { showMenu(anchor, [{ label: 'No recent files yet. Files you open or save appear here.', disabled: true, action() {} }, '-', recover, snaps]); return; }
     showMenu(anchor, list.map(r => ({
       label: r.name, title: new Date(r.at).toLocaleString(),
-      action: async () => {
-        if (!confirmDiscard()) return;
-        try {
-          let p = await r.handle.queryPermission({ mode: 'readwrite' });
-          if (p !== 'granted') p = await r.handle.requestPermission({ mode: 'readwrite' });
-          if (p !== 'granted') { p = await r.handle.queryPermission({ mode: 'read' }); if (p !== 'granted') p = await r.handle.requestPermission({ mode: 'read' }); }
-          if (p !== 'granted') return;
-          const f = await r.handle.getFile();
-          await loadBuffer(await f.arrayBuffer(), f.name, r.handle);
-        } catch (e) {
-          alert('Could not open "' + r.name + '": ' + (e.message || e) + '\nIt will be removed from the list.');
-          try { const l = ((await idb.get('recents')) || []).filter(x => x !== r && x.name !== r.name); await idb.set('recents', l); } catch (e2) { /* ignore */ }
-        }
-      },
-    })).concat(['-', recover, snaps, { label: 'Clear list', action: () => idb.del('recents').catch(() => {}) }]));
+      action: () => openRecent(r),
+    })).concat(['-', ...linkItems(), '-', recover, snaps, { label: 'Clear list', action: () => idb.del('recents').catch(() => {}) }]));
+  }
+  /** Open a Recent entry, asking for file access again if the browser has dropped it (needs a click to have happened). */
+  async function openRecent(r) {
+    if (!confirmDiscard()) return false;
+    try {
+      let p = await r.handle.queryPermission({ mode: 'readwrite' });
+      if (p !== 'granted') p = await r.handle.requestPermission({ mode: 'readwrite' });
+      if (p !== 'granted') { p = await r.handle.queryPermission({ mode: 'read' }); if (p !== 'granted') p = await r.handle.requestPermission({ mode: 'read' }); }
+      if (p !== 'granted') return false;
+      const f = await r.handle.getFile();
+      await loadBuffer(await f.arrayBuffer(), f.name, r.handle, f.lastModified);
+      return true;
+    } catch (e) {
+      alert('Could not open "' + r.name + '": ' + (e.message || e) + '\nIt will be removed from the list.');
+      try { const l = ((await idb.get('recents')) || []).filter(x => x !== r && x.name !== r.name); await idb.set('recents', l); } catch (e2) { /* ignore */ }
+      return false;
+    }
+  }
+
+  // ---------- links that open a workbook (for notes apps such as Obsidian) ----------
+  // ?open=<file name>&wb=<workbook id>[&row=<row .id>]. A web page cannot open a file by its path, so a link finds the
+  // file in this browser's Recent list: by workbook id first (survives renames), then by name.
+  let pendingLink = null;
+  function linkBase() { return location.href.split(/[?#]/)[0]; }
+  function workbookLink(rowId) {
+    const q = new URLSearchParams({ open: state.fileName, wb: state.doc.settings.id || '' });
+    if (rowId) q.set('row', rowId);
+    return linkBase() + '?' + q.toString();
+  }
+  /** The row being edited (or under the reading position), for "Copy link to row …". */
+  function linkRow() {
+    const s = sheet(), f = state.lastFocus;
+    if (!isChapter() || !f || f.i == null || !s.rows[f.i]) return null;
+    const i = f.i;
+    return { id: s.rows[i][Model.IDENT], no: Model.numbering(state.doc, state.si).numbers[i], text: String(s.rows[i][state.doc.mainColumn] || '').replace(/^#{1,6}[ \t]+/, '').trim() };
+  }
+  async function copyText(text, what) {
+    try { await navigator.clipboard.writeText(text); flashStatus(what + ' copied: ' + text); }
+    catch (e) { await askText(what + ' (copy it from here)', text); }
+  }
+  function linkItems() {
+    if (!hasFS) return [{ label: 'Links to a workbook need Edge or Chrome (direct file access).', disabled: true, action() {} }];
+    if (!state.fileHandle) return [{ label: 'Save or open a file to copy a link to it.', disabled: true, action() {} }];
+    const title = docTitle(), r = linkRow();
+    const items = [
+      { label: 'Copy link to this workbook', title: 'A web link that opens this file in SheetWriter from this browser\'s Recent list; paste it into Obsidian or any notes app', action: () => copyText(workbookLink(), 'Link') },
+      { label: 'Copy Markdown link to this workbook', action: () => copyText(`[${title}](${workbookLink()})`, 'Markdown link') },
+    ];
+    if (r && r.id) {
+      const short = r.text.length > 40 ? r.text.slice(0, 40) + '…' : r.text;
+      items.push({ label: `Copy Markdown link to row ${r.no}`, title: 'Opens the workbook at this row; the link follows the row when it moves', action: () => copyText(`[${title} › ${r.no} ${short}](${workbookLink(r.id)})`, 'Markdown link') });
+    }
+    return items;
+  }
+  /** After a linked workbook has loaded: jump to the linked row. */
+  function followLink(link, loadedName) {
+    pendingLink = null;
+    if (link.wb && state.doc.settings.id !== link.wb && loadedName !== link.name) { flashStatus(`Opened ${loadedName}, which is not the linked workbook (${link.name}).`); return; }
+    if (!link.row) return;
+    for (let si = 0; si < state.doc.sheets.length; si++) {
+      const s = state.doc.sheets[si];
+      if (s.kind !== 'chapter') continue;
+      const i = s.rows.findIndex(r => r[Model.IDENT] === link.row);
+      if (i >= 0) { goToRow(si, i, { block: 'center' }); return; }
+    }
+    flashStatus('The linked row is no longer in this workbook.');
+  }
+  async function openFromLink() {
+    const q = new URLSearchParams(location.search), name = q.get('open');
+    if (!name) return;
+    const link = { name, wb: q.get('wb') || '', row: q.get('row') || '' };
+    try { window.history.replaceState(null, '', linkBase() + location.hash); } catch (e) { /* file:// in some browsers */ } // (history here is the undo stack)
+    const dlg = $('#dlg-link'), go = $('#link-open');
+    const ask = (msg, label, action) => {
+      $('#link-msg').textContent = msg; go.textContent = label;
+      go.onclick = async () => { dlg.close(); await action(); };
+      dlg.showModal(); go.focus();
+    };
+    if (!hasFS) { ask(`This link opens “${name}”, but links to files work only in Edge and Chrome, which can reopen files. Open it by hand here?`, 'Open a file…', async () => { pendingLink = link; openFile(); }); return; }
+    let list = [];
+    try { list = (await idb.get('recents')) || []; } catch (e) { /* ignore */ }
+    const byId = link.wb ? list.filter(r => r.id === link.wb) : [];
+    const r = byId.find(x => x.name === name) || byId[0] || list.find(x => x.name === name);
+    if (!r) {
+      ask(`“${name}” is not in this browser's Recent list, so the link cannot find it. Open it once here and the link will work from then on.`, 'Open a file…', async () => { pendingLink = link; openFile(); });
+      return;
+    }
+    let p = 'prompt';
+    try { p = await r.handle.queryPermission({ mode: 'readwrite' }); } catch (e) { /* ignore */ }
+    const open = async () => { pendingLink = link; if (!(await openRecent(r))) pendingLink = null; };
+    if (p === 'granted' && !state.dirty) { await open(); return; }
+    // The browser asks for file access again after a restart; that request needs a click.
+    ask(`Open “${r.name}”${link.row ? ' at the linked row' : ''}?`, 'Open ' + r.name, open);
   }
 
   // ---------- snapshots and compare ----------
@@ -2008,6 +2092,6 @@
 
   // ---------- boot ----------
   render();
-  offerRestore();
+  offerRestore().then(openFromLink);
   window.SheetWriter = { state, render, prefs, Model, XlsxIO, Odf, Exporter, Importer, APP, openImport, openSnapshots, showCompare, currentViewState, applyViewState, loadDoc };
 })();

@@ -46,6 +46,8 @@ const Model = (() => {
       if (!taken || !taken.has(id)) { if (taken) taken.add(id); return id; }
     }
   }
+  /** A workbook's own id (settings.id, the workbook_id row of .sheetwriter): lets a link find the file again after a rename. */
+  function newWorkbookId() { let id = ''; while (id.length < 12) id += Math.floor(Math.random() * 36).toString(36); return id; }
   /** Give every chapter row a persistent .id (and every chapter sheet the column). Duplicates, which Excel copy-paste
    *  produces, are replaced from the second occurrence on. Called by the writers, so the ids also sit in the model. */
   function ensureRowIds(doc) {
@@ -238,7 +240,7 @@ const Model = (() => {
     return {
       version: 1,
       mainColumn: 'text',
-      settings: { numbering: 'continuous', title: '', author: '', description: '', created: new Date().toISOString(), trackUpdated: false, trackAuthor: false, trackCounts: true, freezeColumns: 1, countColumns: [], widths: {}, wordTarget: 0, targetUnit: 'words', roles: { status: '', target: '' }, protectHeaders: true, contentsSheet: true, exportPresets: {}, rowDefaults: {}, view: defaultView(), extra: {} },
+      settings: { numbering: 'continuous', title: '', author: '', description: '', created: new Date().toISOString(), id: newWorkbookId(), trackUpdated: false, trackAuthor: false, trackCounts: true, freezeColumns: 1, countColumns: [], widths: {}, wordTarget: 0, targetUnit: 'words', roles: { status: '', target: '' }, protectHeaders: true, contentsSheet: true, exportPresets: {}, rowDefaults: {}, view: defaultView(), extra: {} },
       sheets: [newChapter('Chapter 1')],
     };
   }
@@ -820,7 +822,7 @@ const Model = (() => {
   return {
     RESERVED, META, COMPUTED, IDENT, KINDS, DEFAULT_COLUMNS, normKind, isHeading, indentOf, emptyRow, newChapter, newDoc, ensureIds, newId, ensureRowIds, newRowId,
     detectKindPrefix, detectIndentPrefix, stamp, isMeta, isComputed, isSystem, touch, ensureMetaColumns,
-    sectionEnd, sectionEnds, isCollapsible, blockOf, moveBlock, moveSection, shiftSectionLevels, siblingMoveTarget, statusColumn, targetColumn, targetUnit, rowTarget, roleColumn, suggestRole, colorIndex,
+    sectionEnd, sectionEnds, isCollapsible, blockOf, moveBlock, moveSection, shiftSectionLevels, siblingMoveTarget, newWorkbookId, statusColumn, targetColumn, targetUnit, rowTarget, roleColumn, suggestRole, colorIndex,
     chapterSheets, chapterIndex, numbering, countColumns, rowCounts, sectionCounts, userColumns, sideColumns, rowIsEmpty, tocEntries, headingFor,
     wordCount, charCount, sheetCounts, docCounts, sheetWords, docWords, safeFileName,
     addRow, deleteRow, moveRow, duplicateRow, splitRow, mergeRow, setCell, setIndent, shiftIndent, cycleKind, shiftKind,
