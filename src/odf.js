@@ -154,8 +154,11 @@ const Odf = (() => {
       }
       tables.push(table('.contents', [10, 70, 24, 9], rows, true));
     }
-    const srows = [['key', 'value', 'description'].map(v => ({ v, s: 'hdr' }))];
-    for (const r of XlsxIO.settingsRows(doc)) srows.push([{ v: r.key, s: 'cell' }, { v: r.value, s: r.link ? 'link' : r.bold ? 'cellh' : 'cell', href: r.link ? r.value : null }, { v: r.desc, s: 'cell' }]);
+    // Notes first on a white fill (which hides the grid there), then the settings table, as in the .xlsx.
+    const srows = XlsxIO.settingsNotes(doc).map(n => [{ v: '', s: 'note' }, { v: n.text, s: n.link ? 'notelink' : n.title ? 'notetitle' : n.bold ? 'noteh' : 'note', href: n.link ? n.text : null }, { v: '', s: 'note' }]);
+    srows.push([{ v: '', s: 'note' }, { v: '', s: 'note' }, { v: '', s: 'note' }]);
+    srows.push(['key', 'value', 'description'].map(v => ({ v, s: 'hdr' })));
+    for (const r of XlsxIO.settingsRows(doc)) srows.push([{ v: r.key, s: 'cell' }, { v: r.value, s: r.link ? 'link' : 'cell', href: r.link ? r.value : null }, { v: r.desc, s: 'cell' }]);
     tables.push(table('.sheetwriter', [16, 56, 70], srows, true));
     const cellStyle = (name, props, textProps) => `<style:style style:name="${name}" style:family="table-cell"><style:table-cell-properties fo:wrap-option="wrap" style:vertical-align="top" ${props}/>${textProps ? `<style:text-properties ${textProps}/>` : ''}</style:style>`;
     const auto = [...widths].map(w => `<style:style style:name="${colStyle(w)}" style:family="table-column"><style:table-column-properties style:column-width="${cmFromExcelWidth(w)}"/></style:style>`).join('')
@@ -167,6 +170,10 @@ const Odf = (() => {
       + cellStyle('cellx', 'style:cell-protect="none"', 'fo:font-style="italic" fo:color="#8a8a8a"')
       + cellStyle('cellmeta', 'style:cell-protect="none"', 'fo:font-size="9pt" fo:color="#8a8a8a"')
       + cellStyle('link', 'style:cell-protect="none"', 'fo:color="#2f6fdb" style:text-underline-style="solid"')
+      + cellStyle('note', 'fo:background-color="#ffffff" style:cell-protect="protected"', '')
+      + cellStyle('noteh', 'fo:background-color="#ffffff" style:cell-protect="protected"', 'fo:font-weight="bold"')
+      + cellStyle('notetitle', 'fo:background-color="#ffffff" style:cell-protect="protected"', 'fo:font-weight="bold" fo:font-size="14pt"')
+      + cellStyle('notelink', 'fo:background-color="#ffffff" style:cell-protect="protected"', 'fo:color="#2f6fdb" style:text-underline-style="solid"')
       + cellStyle('linkb', 'style:cell-protect="none"', 'fo:color="#2f6fdb" style:text-underline-style="solid" fo:font-weight="bold"');
     return XML + `<office:document-content ${NSDECL}><office:automatic-styles>${auto}</office:automatic-styles><office:body><office:spreadsheet>${tables.join('')}</office:spreadsheet></office:body></office:document-content>`;
   }
