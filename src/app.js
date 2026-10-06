@@ -84,6 +84,11 @@
       // Filter and Columns act on Draft and Grid; in Read view they are greyed out rather than switching the view.
       $('#btn-filter').disabled = state.view === 'read';
       $('#btn-columns').disabled = state.view === 'read';
+      const sideBtn = $('#btn-side'), sideCols = isChapter() ? Model.sideColumns(state.doc, sheet()) : [];
+      sideBtn.hidden = state.view !== 'draft';
+      sideBtn.disabled = !sideCols.length;
+      sideBtn.classList.toggle('active', state.ui.side && sideCols.length > 0);
+      sideBtn.title = (state.ui.side ? 'Hide' : 'Show') + ' the side columns beside the text' + (sideCols.length ? '' : ' (this sheet has none)') + '; Columns ▾ chooses which';
       document.body.classList.toggle('toc-open', state.ui.toc !== 'off');
       $('#btn-toc').classList.toggle('active', state.ui.toc !== 'off');
       renderToc();
@@ -931,12 +936,15 @@
     }
     if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'k') { e.preventDefault(); deleteRowAt(i, col); return; }
     if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'm') { e.preventDefault(); moveRowToSheetMenu(i, t); return; }
-    if (noMods && !e.shiftKey && isMain && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && caret === t.selectionEnd) {
+    // ↑ / ↓ move to the row above / below: from the first / last line of the text, or always (Settings, saved with the
+    // workbook). In Grid this works in every column and keeps it; in Draft it works in the main text.
+    if (noMods && !e.shiftKey && (isMain || state.view === 'grid') && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && caret === t.selectionEnd) {
+      const always = state.doc.settings.arrowKeys === 'rows';
       const before = t.value.slice(0, caret), after = t.value.slice(t.selectionEnd);
-      if (e.key === 'ArrowUp' && !before.includes('\n')) { const pv = prevVisible(i); if (pv != null) { e.preventDefault(); focusRow(pv, main, 'end'); } }
-      if (e.key === 'ArrowDown' && !after.includes('\n')) {
+      if (e.key === 'ArrowUp' && (always || !before.includes('\n'))) { const pv = prevVisible(i); if (pv != null) { e.preventDefault(); focusRow(pv, col, 'end'); } }
+      if (e.key === 'ArrowDown' && (always || !after.includes('\n'))) {
         const nv = state.collapsed.has(row._id) ? nextVisibleAfter(Model.sectionEnd(s.rows, i)) : nextVisibleAfter(i + 1);
-        if (nv != null) { e.preventDefault(); focusRow(nv, main, 0); }
+        if (nv != null) { e.preventDefault(); focusRow(nv, col, 0); }
       }
     }
   });
@@ -1257,6 +1265,7 @@
     state.rowFilter = e.target.value;
     Views.applyRowFilter(viewRoot, ctx());
   });
+  $('#btn-side').onclick = () => { state.ui.side = !state.ui.side; render(); };
   $('#btn-filter').onclick = () => { if (state.view === 'read') return; state.showFilter = !state.showFilter; if (!state.showFilter) state.rowFilter = ''; render(); if (state.showFilter) { const f = $('#row-filter'); if (f) f.focus(); } };
   // Theme
   function applyTheme() { document.documentElement.dataset.theme = prefs.theme === 'auto' ? '' : prefs.theme; }
@@ -1962,6 +1971,7 @@
     $('#st-title').value = d.settings.title || '';
     $('#st-author').value = d.settings.author || '';
     $('#st-description').value = d.settings.description || '';
+    $('#st-arrows').value = d.settings.arrowKeys === 'rows' ? 'rows' : 'lines';
     $('#st-numbering').value = d.settings.numbering === 'per-sheet' ? 'per-sheet' : 'continuous';
     $('#st-freeze').value = d.settings.freezeColumns ?? 1;
     $('#st-track-updated').checked = !!d.settings.trackUpdated;
@@ -2014,6 +2024,7 @@
         countColumns: countSel.length === 1 && countSel[0] === sel.value ? [] : countSel,
         wordTarget: Math.max(0, parseInt(String($('#st-target').value).replace(/\s/g, ''), 10) || 0),
         targetUnit: unitSel.value === 'chars' ? 'chars' : 'words',
+        arrowKeys: $('#st-arrows').value === 'rows' ? 'rows' : 'lines',
         rowDefaults: Model.parsePairs($('#st-defaults').value),
         roles: { status: $('#st-role-status').value, target: $('#st-role-target').value },
         protectHeaders: $('#st-protect').checked, contentsSheet: $('#st-contents').checked,

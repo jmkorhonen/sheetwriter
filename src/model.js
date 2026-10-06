@@ -240,7 +240,7 @@ const Model = (() => {
     return {
       version: 1,
       mainColumn: 'text',
-      settings: { numbering: 'continuous', title: '', author: '', description: '', created: new Date().toISOString(), id: newWorkbookId(), trackUpdated: false, trackAuthor: false, trackCounts: true, freezeColumns: 1, countColumns: [], widths: {}, wordTarget: 0, targetUnit: 'words', roles: { status: '', target: '' }, protectHeaders: true, contentsSheet: true, exportPresets: {}, rowDefaults: {}, view: defaultView(), extra: {} },
+      settings: { numbering: 'continuous', title: '', author: '', description: '', created: new Date().toISOString(), id: newWorkbookId(), trackUpdated: false, trackAuthor: false, trackCounts: true, freezeColumns: 1, countColumns: [], widths: {}, wordTarget: 0, targetUnit: 'words', arrowKeys: 'lines', roles: { status: '', target: '' }, protectHeaders: true, contentsSheet: true, exportPresets: {}, rowDefaults: {}, view: defaultView(), extra: {} },
       sheets: [newChapter('Chapter 1')],
     };
   }

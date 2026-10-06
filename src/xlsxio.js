@@ -20,6 +20,7 @@ const XlsxIO = (() => {
     column_widths: 'Grid column widths in pixels, name:px pairs; also used for the Excel column widths',
     word_target: 'Target for the whole workbook, in words or characters as target_unit says (0 = none); per-section targets go in the target column on heading rows',
     target_unit: 'words or chars: what the workbook target and the section targets count',
+    arrow_keys: 'lines: ↑ / ↓ move by line in the text and to the next row from its first or last line; rows: they always move to the row above or below',
     row_defaults: 'Values given to the side columns of rows added in SheetWriter, as column=value pairs separated by semicolons (e.g. status=todo)',
     protect_headers: 'yes/no: protect the header row of chapter sheets in Excel (data cells stay editable; Review → Unprotect Sheet to rename columns)',
     contents_sheet: 'yes/no: write a .contents sheet listing every heading with a link to it (rewritten on every save, not shown in SheetWriter)',
@@ -80,7 +81,7 @@ const XlsxIO = (() => {
       '• Sort or filter rows with the drop-downs in the header row: the .no column restores the order when the file is opened. Reorder rows by editing .no. (Data → Sort with the header row selected is blocked while the header is protected; sort the data rows only, or use the drop-downs.)',
       '• Change .kind (h1, h2, h3, h4, p, s, x) and .indent (0, 1, 2 …).',
       '• Add columns with any name that does not start with a dot or an underscore. Rename your own columns (then reassign roles in SheetWriter Settings if needed).',
-      '• Add key/value rows to this sheet: they are kept. Edit the values of the settings rows above.',
+      '• Add key/value rows to the settings table below: they are kept. Edit the values of the settings rows.',
       `• Add sheets without a ${main} column (data sheets): they are copied through unchanged, formatting included.`,
       `• Colour cells, change fonts, add borders and comments: on chapter sheets they follow the row through the hidden ${Model.IDENT} column (unhide it if you are curious; leave its values alone, copied rows get a fresh id).`,
       'LOST ON THE NEXT SAVE FROM SHEETWRITER:',
@@ -88,9 +89,22 @@ const XlsxIO = (() => {
       `• ${Model.COMPUTED.join(', ')}, ${Model.META.join(', ')}: rewritten from SheetWriter’s own data.`,
       'BREAKS THE FILE OR ITS STRUCTURE:',
       `• Renaming or deleting the dotted columns (${sys}) or the ${main} column, or giving two columns the same name. The header row is protected for this reason (Review → Unprotect Sheet lifts it).`,
-      '• Renaming this sheet, or changing the key column of the settings rows above.',
+      '• Renaming this sheet, or changing the key column of the settings table below, or its key / value header row.',
       '• Merged cells in chapter sheets.',
     ];
+  }
+
+  /** The text block at the top of the .sheetwriter sheet: what this workbook is, then the Excel instructions.
+   *  [{text, title, bold, link}]; written above the settings table, never read back. */
+  function settingsNotes(doc) {
+    const out = [
+      { text: `${APP.name} workbook${doc.settings.title ? ': ' + doc.settings.title : ''}`, title: true },
+      { text: `This workbook is written with ${APP.name}, a text editor that keeps a long text in a spreadsheet: each chapter sheet holds one heading or paragraph per row, numbered in .no, with your own columns beside the text for notes, sources or status. The table further down holds its settings; you can open and edit the workbook in Excel as described here.` },
+      { text: APP.site, link: true },
+      { text: '' },
+    ];
+    excelNotes(doc).forEach((line, k) => out.push({ text: line, bold: k === 0 || /^[A-Z ]+:$/.test(line) }));
+    return out;
   }
 
   function cellText(v) {
@@ -121,7 +135,12 @@ const XlsxIO = (() => {
 
   function readSettings(ws, doc) {
     const extra = {};
-    for (let r = 2; r <= ws.rowCount; r++) {
+    let first = 2; // files before 0.23 start with the header row; later ones have the notes above it
+    for (let r = 1; r <= Math.min(ws.rowCount, 200); r++) {
+      const row = ws.getRow(r);
+      if (cellText(row.getCell(1).value).trim() === 'key' && cellText(row.getCell(2).value).trim() === 'value') { first = r + 1; break; }
+    }
+    for (let r = first; r <= ws.rowCount; r++) {
       const row = ws.getRow(r);
       const key = cellText(row.getCell(1).value).trim();
       if (!key) continue;
@@ -141,6 +160,7 @@ const XlsxIO = (() => {
         case 'status_column': doc.settings.roles.status = value.trim(); break;
         case 'protect_headers': doc.settings.protectHeaders = yes(value); break;
         case 'contents_sheet': doc.settings.contentsSheet = yes(value); break;
+        case 'arrow_keys': doc.settings.arrowKeys = /^r/i.test(value.trim()) ? 'rows' : 'lines'; break;
         case 'target_unit': doc.settings.targetUnit = /^c/i.test(value.trim()) ? 'chars' : 'words'; break;
         case 'target_column': doc.settings.roles.target = value.trim(); break;
         case 'column_widths': {
@@ -171,7 +191,7 @@ const XlsxIO = (() => {
     doc.settings.extra = extra;
   }
 
-  /** Rows of the settings sheet, format-neutral: [{key, value, desc, link, bold, note}]. Shared by the XLSX and ODS writers. */
+  /** Rows of the settings table, format-neutral: [{key, value, desc, link}]. Shared by the XLSX and ODS writers. */
   function settingsRows(doc) {
     const now = new Date().toISOString();
     const view = Object.assign(Model.defaultView(), doc.settings.view || {});
@@ -186,6 +206,7 @@ const XlsxIO = (() => {
       ['column_widths', Object.entries(doc.settings.widths || {}).map(([k, v]) => `${k}:${v}`).join(', ')],
       ['word_target', String(doc.settings.wordTarget || 0)],
       ['target_unit', doc.settings.targetUnit === 'chars' ? 'chars' : 'words'],
+      ['arrow_keys', doc.settings.arrowKeys === 'rows' ? 'rows' : 'lines'],
       ['row_defaults', Model.pairsText(doc.settings.rowDefaults)],
       ['protect_headers', doc.settings.protectHeaders === false ? 'no' : 'yes'],
       ['contents_sheet', doc.settings.contentsSheet === false ? 'no' : 'yes'],
@@ -214,25 +235,36 @@ const XlsxIO = (() => {
     for (const [name, p] of Object.entries(doc.settings.exportPresets || {})) rows.push(['export:' + name, presetToText(p)]);
     const out = rows.map(r => ({ key: r[0], value: r[1], desc: KNOWN[r[0]] || (r[0].startsWith('export:') ? PRESET_DESC : ''), link: LINK_KEYS.includes(r[0]) }));
     for (const [k, v] of Object.entries(doc.settings.extra || {})) out.push({ key: k, value: v[0] || '', desc: v[1] || '' });
-    out.push({ key: '', value: '', desc: '', note: true });
-    excelNotes(doc).forEach((line, k) => out.push({ key: '', value: line, desc: '', note: true, bold: k === 0 || /^[A-Z ]+:$/.test(line) }));
     return out;
   }
 
   async function writeSettings(wb, doc) {
-    const ws = wb.addWorksheet(SETTINGS_SHEET);
-    ws.columns = [
-      { header: 'key', key: 'key', width: 16 },
-      { header: 'value', key: 'value', width: 56 },
-      { header: 'description', key: 'description', width: 70 },
-    ];
+    // The notes on a plain white page, then the settings as a bordered table; no gridlines.
+    const ws = wb.addWorksheet(SETTINGS_SHEET, { views: [{ showGridLines: false }] });
+    ws.columns = [{ key: 'key', width: 16 }, { key: 'value', width: 56 }, { key: 'description', width: 70 }];
+    const top = { wrapText: true, vertical: 'top' };
+    for (const n of settingsNotes(doc)) {
+      const row = ws.addRow(['', n.text, '']);
+      ws.mergeCells(row.number, 2, row.number, 3);
+      const c = row.getCell(2);
+      c.alignment = top;
+      if (n.link) { c.value = { text: n.text, hyperlink: n.text }; c.font = { color: { argb: 'FF2F6FDB' }, underline: true }; }
+      else if (n.title) c.font = { bold: true, size: 14 };
+      else if (n.bold) c.font = { bold: true };
+      // Excel does not fit the height of merged cells to their text: estimate it (about 115 characters a line here).
+      const lines = String(n.text).split('\n').reduce((k, l) => k + Math.max(1, Math.ceil(l.length / 115)), 0);
+      row.height = n.title ? 22 : 15 * lines + 2;
+    }
+    ws.addRow([]);
+    const line = { style: 'thin', color: { argb: 'FFD0D0D0' } };
+    const border = { top: line, left: line, bottom: line, right: line };
+    const head = ws.addRow(['key', 'value', 'description']);
+    head.eachCell(c => { c.font = { bold: true }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEDEDED' } }; c.border = border; });
     for (const r of settingsRows(doc)) {
       const row = ws.addRow([r.key, r.value, r.desc]);
       if (r.link) { row.getCell(2).value = { text: r.value, hyperlink: r.value }; row.getCell(2).font = { color: { argb: 'FF2F6FDB' }, underline: true }; }
-      if (r.bold) row.getCell(2).font = { bold: true };
+      for (let k = 1; k <= 3; k++) { const c = row.getCell(k); c.alignment = top; c.border = border; }
     }
-    ws.getRow(1).font = { bold: true };
-    ws.eachRow(row => row.eachCell(c => { c.alignment = { wrapText: true, vertical: 'top' }; }));
     // Protect against accidental edits in Excel. No password: "Unprotect Sheet" in Excel is one click.
     try { await ws.protect('', { selectLockedCells: true, selectUnlockedCells: true }); } catch (e) { /* optional */ }
   }
@@ -588,5 +620,5 @@ const XlsxIO = (() => {
     try { await ws.protect('', { selectLockedCells: true, selectUnlockedCells: true }); } catch (e) { /* optional */ }
   }
 
-  return { load, loadFromSheets, save, cellText, sortByNo, excelNotes, settingsRows, contentsEntries, presetToText, presetFromText, fileColumns, widthFor, safeSheetName, colLetter, SETTINGS_SHEET, MIME };
+  return { load, loadFromSheets, save, cellText, sortByNo, excelNotes, settingsNotes, settingsRows, contentsEntries, presetToText, presetFromText, fileColumns, widthFor, safeSheetName, colLetter, SETTINGS_SHEET, MIME };
 })();

@@ -2,6 +2,9 @@
 
 One line per release; the commit under each tag has the details. Dates are the day the tag was pushed.
 
+## 0.23.0 (2026-10-06)
+Draft: a ◨ Side button shows or hides the side columns. Settings → ↑ / ↓ while editing: move by line (as before) or always to the row above / below, saved in the workbook as `arrow_keys`; in Grid ↑ / ↓ now also move between rows in side columns. The `.sheetwriter` sheet opens with a description and the Excel instructions on a white page without gridlines, above a bordered settings table.
+
 ## 0.22.0 (2026-10-01)
 Links that open a workbook, for Obsidian and other notes apps: Recent ▾ → Copy link to this workbook, as a Markdown link, or to the current row. Links find the file in the browser's Recent list (now 20 entries) by a new `workbook_id` in `.sheetwriter`, or by name; Edge and Chrome.
 
