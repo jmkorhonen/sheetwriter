@@ -2,6 +2,9 @@
 
 One line per release; the commit under each tag has the details. Dates are the day the tag was pushed.
 
+## 0.24.0 (2026-10-07)
+Settings → Editor: text size and fonts (one for the text column, one for the other columns; common fonts only, shown in this browser only). Columns ▾ lists only what the current view shows: in Draft the side columns and, apart, "Counts and last edit", which now also covers the last-edit line, so cards without it are only as tall as their text and side fields; in Grid the table's columns. ◨ Side sits before Columns ▾; Read view drops Columns, Filter, Collapse all and Expand all. Saving only editor preferences no longer marks the workbook changed.
+
 ## 0.23.0 (2026-10-06)
 Draft: a ◨ Side button shows or hides the side columns. Settings → ↑ / ↓ while editing: move by line (as before) or always to the row above / below, saved in the workbook as `arrow_keys`; in Grid ↑ / ↓ now also move between rows in side columns. The `.sheetwriter` sheet opens with a description and the Excel instructions on a white page without gridlines, above a bordered settings table.
 

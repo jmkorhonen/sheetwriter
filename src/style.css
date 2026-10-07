@@ -9,6 +9,8 @@
   --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
   --serif: Georgia, "Times New Roman", serif;
   --sans: system-ui, "Segoe UI", Roboto, sans-serif;
+  /* Settings → Editor: the main text column's font, the other columns' font, and a text size factor (app.js sets them) */
+  --text-font: var(--serif); --other-font: var(--sans); --ts: 1;
   color-scheme: light;
 }
 * { box-sizing: border-box; }
@@ -136,7 +138,7 @@ table.grid tr.selected td { background: var(--sel); }
 .card.dragging { opacity: .4; }
 .card.drop-above { box-shadow: 0 -3px 0 0 var(--accent); }
 .card.drop-below { box-shadow: 0 3px 0 0 var(--accent); }
-.gutter { display: flex; align-items: center; gap: 3px; padding-top: 5px; font-size: 12px; color: var(--muted); user-select: none; white-space: nowrap; }
+.gutter { display: flex; align-items: center; gap: 3px; padding-top: calc(5px + 11.6px * (var(--ts) - 1)); font-size: 12px; color: var(--muted); user-select: none; white-space: nowrap; }
 .handle { cursor: grab; color: var(--handle); letter-spacing: -2px; font-size: 14px; padding: 0 2px; }
 .handle:hover { color: var(--ink); }
 .collapse { border: none; background: none; color: var(--dim2); cursor: pointer; padding: 0; width: 18px; font-size: 16px; line-height: 1; }
@@ -149,7 +151,7 @@ table.grid tr.selected td { background: var(--sel); }
 .kindbadge:hover { background: var(--accent-soft); }
 .body { min-width: 0; }
 .mainwrap { position: relative; }
-.mainwrap .rendered { font-family: var(--serif); font-size: 16px; line-height: 1.45; padding: 3px 5px; min-height: 1.5em; cursor: text; word-wrap: break-word; }
+.mainwrap .rendered { font-family: var(--text-font); font-size: calc(16px * var(--ts)); line-height: 1.45; padding: 3px 5px; min-height: 1.5em; cursor: text; word-wrap: break-word; }
 .mainwrap .rendered > :first-child { margin-top: 0; }
 .mainwrap .rendered > :last-child { margin-bottom: 0; }
 .mainwrap .rendered p { margin: 0 0 .4em; }
@@ -160,16 +162,16 @@ table.grid tr.selected td { background: var(--sel); }
 table.grid td:has(> .mainwrap) { cursor: text; }
 table.grid td.cursor { outline: 2px solid var(--accent); outline-offset: -2px; }
 #view.view-grid .scroll:focus { outline: none; }
-table.grid td .mainwrap .rendered { font-family: inherit; font-size: 13.5px; line-height: 1.4; padding: 2px 4px; min-height: 1.4em; }
-table.grid td.main .mainwrap .rendered { font-family: var(--serif); font-size: 14.5px; }
+table.grid td .mainwrap .rendered { font-family: var(--other-font); font-size: calc(13.5px * var(--ts)); line-height: 1.4; padding: 2px 4px; min-height: 1.4em; }
+table.grid td.main .mainwrap .rendered { font-family: var(--text-font); font-size: calc(14.5px * var(--ts)); }
 table.grid td .mainwrap .rendered p { margin: 0 0 .3em; }
 table.grid td .mainwrap.empty textarea { min-height: 1.4em; }
 textarea.cell { width: 100%; border: none; background: transparent; resize: none; overflow: hidden; outline: none; font: inherit; color: inherit; padding: 3px 5px; line-height: 1.45; }
-textarea.cell.main { font-family: var(--serif); font-size: 16px; }
-.card.kind-h1 .rendered, .card.kind-h1 textarea.main { font-family: var(--sans); font-weight: 700; font-size: 21px; }
-.card.kind-h2 .rendered, .card.kind-h2 textarea.main { font-family: var(--sans); font-weight: 700; font-size: 18px; }
-.card.kind-h3 .rendered, .card.kind-h3 textarea.main { font-family: var(--sans); font-weight: 700; font-style: italic; font-size: 16px; }
-.card.kind-h4 .rendered, .card.kind-h4 textarea.main { font-family: var(--sans); font-weight: 500; font-style: italic; font-size: 15px; color: var(--ink2); }
+textarea.cell.main { font-family: var(--text-font); font-size: calc(16px * var(--ts)); }
+.card.kind-h1 .rendered, .card.kind-h1 textarea.main { font-family: var(--sans); font-weight: 700; font-size: calc(21px * var(--ts)); }
+.card.kind-h2 .rendered, .card.kind-h2 textarea.main { font-family: var(--sans); font-weight: 700; font-size: calc(18px * var(--ts)); }
+.card.kind-h3 .rendered, .card.kind-h3 textarea.main { font-family: var(--sans); font-weight: 700; font-style: italic; font-size: calc(16px * var(--ts)); }
+.card.kind-h4 .rendered, .card.kind-h4 textarea.main { font-family: var(--sans); font-weight: 500; font-style: italic; font-size: calc(15px * var(--ts)); color: var(--ink2); }
 .card.kind-h1 { margin-top: 10px; }
 .card.kind-h2 { margin-top: 6px; }
 .card.kind-s .body { padding-left: 22px; }
@@ -181,7 +183,7 @@ textarea.cell.main { font-family: var(--serif); font-size: 16px; }
 .pill { border: 1px solid var(--line); background: var(--chip); border-radius: 10px; font-size: 11px; color: var(--muted); padding: 0 8px; margin: 0 5px 3px; cursor: pointer; }
 .pill:hover { background: var(--accent-soft); }
 .meta { font-size: 10.5px; color: var(--faint); text-align: right; padding: 0 5px 1px; }
-.side { display: flex; flex-direction: column; gap: 1px; padding: 2px 0 2px 8px; border-left: 1px dashed var(--line); min-width: 0; font-size: 12.5px; align-self: stretch; }
+.side { display: flex; flex-direction: column; gap: 1px; padding: 2px 0 2px 8px; border-left: 1px dashed var(--line); min-width: 0; font-family: var(--other-font); font-size: calc(12.5px * var(--ts)); align-self: stretch; }
 .side.empty { cursor: text; min-height: 22px; }
 /* The hint names the columns but stays invisible until the pointer is over the area, so empty rows look empty. */
 .side-hint { display: none; color: var(--faint); font-size: 11px; padding: 3px 0 0 4px; user-select: none; pointer-events: none; opacity: 0; transition: opacity .12s; }
@@ -191,8 +193,8 @@ textarea.cell.main { font-family: var(--serif); font-size: 16px; }
 .side-field { display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
 .side-field:not(.filled) { display: none; }
 .card:focus-within .side-field, .card.focusing .side-field { display: flex; }
-.side-field .lbl { color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; padding-top: 5px; width: 62px; flex: none; text-align: right; overflow: hidden; text-overflow: ellipsis; }
-.side-field textarea { font-size: 12.5px; background: var(--soft); border-radius: 4px; padding: 2px 5px; line-height: 1.35; }
+.side-field .lbl { color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; padding-top: calc(5px + 8.4px * (var(--ts) - 1)); width: 62px; flex: none; text-align: right; overflow: hidden; text-overflow: ellipsis; }
+.side-field textarea { font-size: calc(12.5px * var(--ts)); background: var(--soft); border-radius: 4px; padding: 2px 5px; line-height: 1.35; }
 .side-field textarea:focus { background: var(--paper); box-shadow: inset 0 0 0 1px var(--accentline); }
 .side-field.filled .lbl { color: var(--ink); }
 
@@ -244,13 +246,13 @@ select.kind-select { font: inherit; font-size: 12px; width: 48px; padding: 0; }
 table.grid td.indent { font-family: var(--mono); font-size: 12px; color: var(--muted); text-align: center; width: 44px; }
 table.grid td.meta, table.grid th.meta { font-size: 11px; color: var(--faint); white-space: nowrap; }
 table.grid td.main { min-width: 0; }
-table.grid td textarea.cell { padding: 2px 4px; font-size: 13.5px; }
-table.grid td.main textarea.cell { font-family: var(--serif); font-size: 14.5px; }
+table.grid td textarea.cell { padding: 2px 4px; font-family: var(--other-font); font-size: calc(13.5px * var(--ts)); }
+table.grid td.main textarea.cell { font-family: var(--text-font); font-size: calc(14.5px * var(--ts)); }
 /* Heading levels step down as in Draft view: h1 and h2 bold, h3 bold italic, h4 medium italic and greyer. */
-table.grid tr.kind-h1 td.main textarea, table.grid tr.kind-h1 td.main .rendered { font-family: var(--sans); font-weight: 700; font-size: 16px; }
-table.grid tr.kind-h2 td.main textarea, table.grid tr.kind-h2 td.main .rendered { font-family: var(--sans); font-weight: 700; font-size: 15px; }
-table.grid tr.kind-h3 td.main textarea, table.grid tr.kind-h3 td.main .rendered { font-family: var(--sans); font-weight: 700; font-style: italic; font-size: 14.5px; }
-table.grid tr.kind-h4 td.main textarea, table.grid tr.kind-h4 td.main .rendered { font-family: var(--sans); font-weight: 500; font-style: italic; font-size: 14px; color: var(--ink2); }
+table.grid tr.kind-h1 td.main textarea, table.grid tr.kind-h1 td.main .rendered { font-family: var(--sans); font-weight: 700; font-size: calc(16px * var(--ts)); }
+table.grid tr.kind-h2 td.main textarea, table.grid tr.kind-h2 td.main .rendered { font-family: var(--sans); font-weight: 700; font-size: calc(15px * var(--ts)); }
+table.grid tr.kind-h3 td.main textarea, table.grid tr.kind-h3 td.main .rendered { font-family: var(--sans); font-weight: 700; font-style: italic; font-size: calc(14.5px * var(--ts)); }
+table.grid tr.kind-h4 td.main textarea, table.grid tr.kind-h4 td.main .rendered { font-family: var(--sans); font-weight: 500; font-style: italic; font-size: calc(14px * var(--ts)); color: var(--ink2); }
 table.grid tr.kind-x td.main .rendered { font-style: italic; color: var(--muted); }
 table.grid tr.kind-x td { opacity: .6; }
 table.grid tr.dragging { opacity: .4; }
@@ -263,14 +265,14 @@ table.grid.readonly td, table.grid.readonly th { max-width: 400px; overflow: hid
 /* ---- read ---- */
 .readbar { max-width: 760px; margin: 0 auto 10px; padding: 0 16px; display: flex; gap: 16px; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
 .readbar label { display: flex; align-items: center; gap: 4px; }
-article.read { max-width: 760px; margin: 0 auto; padding: 32px 40px; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; font-family: var(--serif); font-size: 17px; line-height: 1.65; }
+article.read { max-width: 760px; margin: 0 auto; padding: 32px 40px; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; font-family: var(--text-font); font-size: calc(17px * var(--ts)); line-height: 1.65; }
 article.read h1, article.read h2, article.read h3, article.read h4, article.read h5 { font-family: var(--sans); line-height: 1.25; margin: 1.3em 0 .5em; scroll-margin-top: 16px; }
-article.read h1 { font-size: 28px; font-weight: 700; border-bottom: 2px solid var(--line); padding-bottom: .2em; }
-article.read h2 { font-size: 22px; font-weight: 700; }
-article.read h3 { font-size: 18px; font-weight: 700; font-style: italic; }
-article.read h4 { font-size: 16px; font-weight: 500; font-style: italic; color: var(--ink2); }
-article.read h5 { font-size: 15px; font-weight: 500; font-style: italic; color: var(--muted); }
-article.read blockquote { border-left: 3px solid var(--line); margin: .5em 0 1em; padding: .2em 1em; color: var(--muted); font-size: 15px; }
+article.read h1 { font-size: calc(28px * var(--ts)); font-weight: 700; border-bottom: 2px solid var(--line); padding-bottom: .2em; }
+article.read h2 { font-size: calc(22px * var(--ts)); font-weight: 700; }
+article.read h3 { font-size: calc(18px * var(--ts)); font-weight: 700; font-style: italic; }
+article.read h4 { font-size: calc(16px * var(--ts)); font-weight: 500; font-style: italic; color: var(--ink2); }
+article.read h5 { font-size: calc(15px * var(--ts)); font-weight: 500; font-style: italic; color: var(--muted); }
+article.read blockquote { border-left: 3px solid var(--line); margin: .5em 0 1em; padding: .2em 1em; color: var(--muted); font-size: calc(15px * var(--ts)); }
 article.read a { color: var(--accent); }
 
 /* ---- dialogs ---- */
@@ -421,5 +423,5 @@ article.read.long .rblock { content-visibility: auto; contain-intrinsic-size: au
   .card { grid-template-columns: 92px 1fr; padding-right: 4px; }
   .card.with-side { grid-template-columns: 92px 1fr; }
   .cards { padding: 0 6px; }
-  article.read { padding: 18px 16px; font-size: 16px; }
+  article.read { padding: 18px 16px; font-size: calc(16px * var(--ts)); }
 }

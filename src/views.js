@@ -76,19 +76,18 @@ const Views = (() => {
   }
 
   const fmt = n => Number(n).toLocaleString('en-US').replace(/,/g, ' ');
-  /** The small grey line under a card: row counts, section totals, last edit. */
+  /** The small grey line under a card: row counts, section totals and targets, last edit. Columns ▾ → Counts and last
+   *  edit turns it off, and a card without it (and without a status chip) is no taller than its text and side fields. */
   function metaLine(ctx, sheet, row, i, sections) {
     const doc = ctx.doc;
-    const parts = [];
-    if (ctx.showCounts) {
-      const rc = Model.rowCounts(doc, sheet, row);
-      parts.push(`${fmt(rc.words)} w · ${fmt(rc.chars)} c`);
-      const sec = sections[i];
-      const target = Model.rowTarget(doc, sheet, row), unit = Model.targetUnit(doc);
-      const of = u => target && unit === u ? ` / ${fmt(target)}` : '', pct = u => target && unit === u ? ` (${Math.round(100 * sec[u] / target)} %)` : '';
-      if (sec) parts.push(`section ${fmt(sec.words)}${of('words')} w${pct('words')} · ${fmt(sec.chars)}${of('chars')} c${pct('chars')} · ${sec.rows} rows`);
-      else if (target) parts.push(`target ${fmt(target)} ${unit === 'chars' ? 'c' : 'w'} (${Math.round(100 * rc[unit] / target)} %)`);
-    }
+    if (!ctx.showCounts) return '';
+    const rc = Model.rowCounts(doc, sheet, row);
+    const parts = [`${fmt(rc.words)} w · ${fmt(rc.chars)} c`];
+    const sec = sections[i];
+    const target = Model.rowTarget(doc, sheet, row), unit = Model.targetUnit(doc);
+    const of = u => target && unit === u ? ` / ${fmt(target)}` : '', pct = u => target && unit === u ? ` (${Math.round(100 * sec[u] / target)} %)` : '';
+    if (sec) parts.push(`section ${fmt(sec.words)}${of('words')} w${pct('words')} · ${fmt(sec.chars)}${of('chars')} c${pct('chars')} · ${sec.rows} rows`);
+    else if (target) parts.push(`target ${fmt(target)} ${unit === 'chars' ? 'c' : 'w'} (${Math.round(100 * rc[unit] / target)} %)`);
     if (doc.settings.trackUpdated && row['.updated']) parts.push(row['.updated']);
     if (doc.settings.trackAuthor && row['.author']) parts.push(row['.author']);
     return parts.join(' '); // em spaces: ordinary spaces would collapse to one
