@@ -6,7 +6,7 @@
 
   // Editor preferences live in this browser, not in the workbook.
   const PREF_KEY = 'sheetwriter.prefs';
-  const prefs = Object.assign({ enterMode: 'row', indentTrigger: '   ', theme: 'auto', autosaveCopy: { enabled: false, minutes: 2 } }, (() => { try { return JSON.parse(localStorage.getItem(PREF_KEY) || '{}'); } catch (e) { return {}; } })());
+  const prefs = Object.assign({ enterMode: 'row', indentTrigger: '   ', theme: 'auto', textSize: 1, textFont: 'georgia', otherFont: 'system', autosaveCopy: { enabled: false, minutes: 2 } }, (() => { try { return JSON.parse(localStorage.getItem(PREF_KEY) || '{}'); } catch (e) { return {}; } })());
   function savePrefs() { try { localStorage.setItem(PREF_KEY, JSON.stringify(prefs)); } catch (e) { /* ignore */ } }
 
   const state = {
@@ -81,9 +81,9 @@
       $('#btn-undo').disabled = !history.undo.length;
       $('#btn-redo').disabled = !history.redo.length;
       $('#btn-filter').classList.toggle('active', !!state.showFilter);
-      // Filter and Columns act on Draft and Grid; in Read view they are greyed out rather than switching the view.
-      $('#btn-filter').disabled = state.view === 'read';
-      $('#btn-columns').disabled = state.view === 'read';
+      // Columns, Filter, Collapse all and Expand all act on Draft and Grid; Read view does without them.
+      for (const id of ['#btn-columns', '#btn-filter', '#btn-collapse', '#btn-expand']) $(id).hidden = state.view === 'read';
+      $('#btn-columns').title = state.view === 'grid' ? 'Which columns the Grid shows' : 'Which side columns the Draft view shows beside the text, and the counts and last edit under each row';
       const sideBtn = $('#btn-side'), sideCols = isChapter() ? Model.sideColumns(state.doc, sheet()) : [];
       sideBtn.hidden = state.view !== 'draft';
       sideBtn.disabled = !sideCols.length;
@@ -1239,22 +1239,27 @@
   $('#btn-toc').onclick = () => { if (state.ui.toc === 'off') state.ui.toc = state.ui.lastToc || 'sheet'; else { state.ui.lastToc = state.ui.toc; state.ui.toc = 'off'; } render(); };
   $('#btn-collapse').onclick = () => collapseAll(true);
   $('#btn-expand').onclick = () => collapseAll(false);
+  /** Columns ▾ lists what the current view can show. Draft: the side columns beside the text (◨ Side shows or hides
+   *  them all) and, apart from those, the details line under each card. Grid: the table's columns. */
   function columnsMenu(anchor) {
+    const toggle = (set, c) => { if (set.has(c)) set.delete(c); else set.add(c); render(); };
     showMenu(anchor, () => {
-      const cols = isChapter() ? Model.sideColumns(state.doc, sheet()) : [];
-      const items = [
-        { heading: 'Draft view shows' },
-        { label: 'Side columns', checked: state.ui.side, keep: true, action: () => { state.ui.side = !state.ui.side; render(); } },
-      ];
-      for (const c of cols) items.push({ label: c, checked: state.ui.side && !state.ui.hidden.has(c), disabled: !state.ui.side, keep: true, action: () => { if (state.ui.hidden.has(c)) state.ui.hidden.delete(c); else state.ui.hidden.add(c); render(); } });
-      if (cols.length > 1) items.push({ label: 'All side columns', keep: true, action: () => { state.ui.hidden.clear(); state.ui.side = true; render(); } });
-      items.push({ label: 'Row counts (words, characters, section totals)', checked: state.ui.counts, keep: true, action: () => { state.ui.counts = !state.ui.counts; render(); } });
-      if (isChapter()) {
-        items.push('-', { heading: 'Grid view shows' });
-        const gcols = sheet().columns.filter(c => c !== '.no' && c !== state.doc.mainColumn);
-        for (const c of gcols) items.push({ label: c, checked: !state.ui.gridHidden.has(c), keep: true, action: () => { if (state.ui.gridHidden.has(c)) state.ui.gridHidden.delete(c); else state.ui.gridHidden.add(c); render(); } });
-        if (state.ui.gridHidden.size) items.push({ label: 'All columns', keep: true, action: () => { state.ui.gridHidden.clear(); render(); } });
+      if (!isChapter()) return [{ label: 'A data sheet shows all its columns.', disabled: true, action() {} }];
+      if (state.view === 'grid') {
+        const items = [{ heading: 'Columns in Grid' }];
+        for (const c of sheet().columns.filter(c => c !== '.no' && c !== state.doc.mainColumn)) items.push({ label: c, checked: !state.ui.gridHidden.has(c), keep: true, action: () => toggle(state.ui.gridHidden, c) });
+        return items;
       }
+      const cols = Model.sideColumns(state.doc, sheet());
+      const items = [{ heading: 'Side columns beside the text' }];
+      if (!cols.length) items.push({ label: 'This sheet has no side columns.', disabled: true, action() {} });
+      else if (!state.ui.side) items.push({ label: 'Hidden now: ◨ Side shows them.', disabled: true, action() {} });
+      for (const c of cols) items.push({ label: c, checked: !state.ui.hidden.has(c), keep: true, action: () => toggle(state.ui.hidden, c) });
+      items.push('-', { heading: 'Under each row' }, {
+        label: 'Counts and last edit', checked: state.ui.counts, keep: true,
+        title: 'Words and characters, section totals and targets, and the time and author of the last edit (when the workbook keeps them). Also the counts in the contents pane.',
+        action: () => { state.ui.counts = !state.ui.counts; render(); },
+      });
       return items;
     });
   }
@@ -1270,6 +1275,24 @@
   // Theme
   function applyTheme() { document.documentElement.dataset.theme = prefs.theme === 'auto' ? '' : prefs.theme; }
   applyTheme();
+  // Text size and fonts (Settings → Editor). Only fonts found on most systems, each stack ending in a generic family, so
+  // every browser shows something sensible. They change how text looks in the editor only, never the files or exports.
+  const FONTS = {
+    georgia: { label: 'Georgia (serif)', stack: 'Georgia, "Times New Roman", serif' },
+    times: { label: 'Times New Roman (serif)', stack: '"Times New Roman", Times, "Liberation Serif", serif' },
+    system: { label: 'System font (sans-serif)', stack: 'system-ui, "Segoe UI", Roboto, sans-serif' },
+    arial: { label: 'Arial (sans-serif)', stack: 'Arial, Helvetica, "Liberation Sans", sans-serif' },
+    mono: { label: 'Monospace', stack: 'ui-monospace, Menlo, Consolas, "Cascadia Mono", "Liberation Mono", monospace' },
+  };
+  const TEXT_SIZES = [0.9, 1, 1.15, 1.3, 1.5];
+  function applyTextPrefs(p = prefs) {
+    const st = document.documentElement.style;
+    st.setProperty('--ts', String(TEXT_SIZES.includes(+p.textSize) ? +p.textSize : 1));
+    st.setProperty('--text-font', (FONTS[p.textFont] || FONTS.georgia).stack);
+    st.setProperty('--other-font', (FONTS[p.otherFont] || FONTS.system).stack);
+    Views.autosizeAll(viewRoot); // text areas take their height from their text
+  }
+  applyTextPrefs();
   // Click the title to edit it in place.
   $('#doc-title').onclick = () => {
     if ($('#title-edit')) return;
@@ -1981,6 +2004,15 @@
     $('#st-contents').checked = d.settings.contentsSheet !== false;
     $('#st-enter').value = prefs.enterMode;
     $('#st-theme').value = prefs.theme || 'auto';
+    for (const [id, key] of [['#st-font-text', 'textFont'], ['#st-font-other', 'otherFont']]) {
+      const fs = $(id);
+      if (!fs.options.length) for (const [k, f] of Object.entries(FONTS)) fs.appendChild(Views.el('option', { value: k }, f.label));
+      fs.value = FONTS[prefs[key]] ? prefs[key] : (key === 'textFont' ? 'georgia' : 'system');
+    }
+    $('#st-size').value = String(TEXT_SIZES.includes(+prefs.textSize) ? +prefs.textSize : 1);
+    // Size and fonts show at once behind the dialog; closing it without saving puts the saved ones back.
+    const textForm = () => ({ textSize: +$('#st-size').value, textFont: $('#st-font-text').value, otherFont: $('#st-font-other').value });
+    dlg.onclose = () => applyTextPrefs();
     $('#st-target').value = d.settings.wordTarget || '';
     const unitSel = $('#st-target-unit');
     unitSel.value = Model.targetUnit(d);
@@ -2012,7 +2044,7 @@
     const formSnapshot = () => JSON.stringify([...dlg.querySelectorAll('input, select')].map(n => n.type === 'checkbox' ? n.checked : n.value));
     const initial = formSnapshot();
     const refreshSaveButton = () => { $('#st-save').disabled = formSnapshot() === initial; };
-    dlg.oninput = dlg.onchange = refreshSaveButton;
+    dlg.oninput = dlg.onchange = e => { refreshSaveButton(); if (e && e.target && /^st-(size|font-)/.test(e.target.id)) applyTextPrefs(textForm()); };
     refreshSaveButton();
     $('#st-extra').textContent = Object.keys(d.settings.extra || {}).length
       ? 'Extra keys kept from the file: ' + Object.keys(d.settings.extra).join(', ')
@@ -2031,10 +2063,15 @@
         trackUpdated: $('#st-track-updated').checked, trackAuthor: $('#st-track-author').checked, trackCounts: $('#st-track-counts').checked };
       const main = sel.value;
       prefs.enterMode = $('#st-enter').value; prefs.indentTrigger = indSel.value; prefs.theme = $('#st-theme').value; applyTheme();
+      Object.assign(prefs, textForm()); // applied when the dialog closes
       prefs.autosaveCopy = { enabled: $('#st-copy-enabled').checked, minutes: parseInt($('#st-copy-minutes').value, 10) || 2 }; savePrefs();
       if (prefs.autosaveCopy.enabled && !state.copyHandle && hasFS) chooseCopyFile();
       dlg.close();
-      mutate(doc => { Object.assign(doc.settings, vals); if (main && main !== doc.mainColumn) Model.setMainColumn(doc, main); Model.ensureMetaColumns(doc); });
+      // Only workbook settings make the workbook "changed": editor preferences such as fonts live in this browser.
+      const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+      if ((main && main !== state.doc.mainColumn) || Object.keys(vals).some(k => !same(vals[k], state.doc.settings[k]))) {
+        mutate(doc => { Object.assign(doc.settings, vals); if (main && main !== doc.mainColumn) Model.setMainColumn(doc, main); Model.ensureMetaColumns(doc); });
+      }
     };
     dlg.showModal();
   }

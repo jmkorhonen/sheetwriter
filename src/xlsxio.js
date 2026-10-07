@@ -35,7 +35,7 @@ const XlsxIO = (() => {
     view_toc: 'Table of contents: off, sheet or all',
     view_side: 'yes/no: show side columns in Draft view',
     view_hidden_columns: 'Side columns hidden in Draft view (comma-separated)',
-    view_counts: 'yes/no: show word and character counts under each card in Draft view',
+    view_counts: 'yes/no: show counts, targets and the last edit under each card in Draft view, and the counts in the contents pane',
     view_grid_hidden_columns: 'Columns hidden in Grid view (comma-separated)',
     workbook_id: 'This workbook\'s id; links made with Recent ▾ → Copy link use it to find the file again',
     created: 'First saved (ISO date)',
