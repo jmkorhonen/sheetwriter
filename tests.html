@@ -26,6 +26,8 @@
 <script src="src/importer.js"></script>
 <script src="src/html2md.js"></script>
 <script src="src/xlsxio.js"></script>
+<script src="src/gsheets.js"></script>
+<script src="tests/fake-sheets.js"></script>
 <script>
 const tests = [];
 const test = (name, fn) => tests.push({ name, fn });
@@ -597,6 +599,111 @@ test('md: raw html is escaped, links restricted, lists render', () => {
   ok(h.includes('href="#"'), 'javascript link neutralised'); ok(h.includes('href="https://a.b"'));
   ok(MD.render('Intro\n- a\n- b').includes('<li>a</li>'), 'list after a line');
   ok(MD.render('- a\n- b').startsWith('<ul>'), 'list at the start of a cell');
+});
+
+// ---- Google Sheets (against tests/fake-sheets.js) ----
+const gsRead = ss => GSheets.docFromRemote(FakeSheets.remote(ss)).doc;
+const gsCopy = d => JSON.parse(JSON.stringify(d));
+const gsTexts = doc => doc.sheets.filter(s => s.kind === 'chapter').map(s => s.name + ': ' + s.rows.map(r => r.text).join(' | '));
+/** A new spreadsheet holding doc, written the way GSheets.saveNew does. */
+function gsNew(doc) {
+  const ss = FakeSheets.create('Book', [{ title: '.sheetwriter', id: 7 }]);
+  const d = gsCopy(doc); d.sheets.forEach(s => delete s._gid);
+  FakeSheets.apply(ss, GSheets.plan(d, FakeSheets.remote(ss)));
+  return { ss, doc: d };
+}
+/** GSheets.save without the network: read, merge, write. */
+function gsSave(ss, mine, base) {
+  const remote = FakeSheets.remote(ss);
+  const m = GSheets.merge(JSON.parse(base), mine, GSheets.docFromRemote(remote).doc);
+  FakeSheets.apply(ss, GSheets.plan(m.doc, remote));
+  return { doc: m.doc, conflicts: m.conflicts, base: GSheets.writtenCopy(m.doc) };
+}
+const gsChapter = (name, texts) => Object.assign(Model.newChapter(name, ['.no', '.kind', 'text']), { rows: texts.map(text => ({ '.no': '', '.kind': 'p', text })) });
+test('gsheets: a workbook written to a spreadsheet reads back the same: tabs, ids, settings, frozen header, hidden .id', () => {
+  const doc = sampleDoc(); doc.settings.arrowKeys = 'rows';
+  const { ss, doc: written } = gsNew(doc);
+  eq(ss.sheets.map(s => s.title), ['Intro', 'Body', '.sheetwriter']);
+  const back = gsRead(ss);
+  eq(gsTexts(back), gsTexts(written));
+  eq(back.sheets[0].rows.map(r => r['.kind']), ['h1', 'p', 's', 'x', 'p', 'p']);
+  eq(back.sheets[0].rows.map(r => r['.id']), written.sheets[0].rows.map(r => r['.id']), 'row ids survive');
+  eq(back.settings.title, 'Test workbook: draft/1'); eq(back.settings.arrowKeys, 'rows');
+  eq(back.sheets[0].rows[5].text, '=SUM(A1) is text, not a formula');
+  const intro = ss.sheets[0], head = FakeSheets.shown(intro)[0];
+  eq(intro.frozenRows, 1); ok(intro.hidden.includes(head.indexOf('.id')), '.id column hidden');
+  eq(FakeSheets.shown(intro)[2][0], '1.1', 'numbers written as text');
+  ok(back.sheets.every(s => s._gid != null), 'tabs remember their Google id');
+});
+test('gsheets: rows typed into Google Sheets without an id get the same id on every read', () => {
+  const { ss } = gsNew(sampleDoc());
+  const intro = ss.sheets[0], head = intro.cells[0];
+  intro.cells.push(head.map(c => (c === 'text' ? 'Typed in Google Sheets' : c === '.kind' ? 'p' : '')));
+  const find = d => d.sheets[0].rows.find(r => r.text === 'Typed in Google Sheets');
+  const a = find(gsRead(ss)), b = find(gsRead(ss));
+  ok(a && a['.id'] && a['.id'] === b['.id'], 'same id twice');
+});
+test('gsheets: saving keeps what someone else changed in other rows and their new rows; the same cell is reported', () => {
+  const { ss } = gsNew(sampleDoc());
+  const opened = gsRead(ss), base = GSheets.writtenCopy(opened);
+  const other = gsRead(ss); // Anna opened it at the same time
+  other.sheets[0].rows[1].notes = 'checked by Anna';
+  other.sheets[0].rows[2].text = 'Anna rewrote this sentence.';
+  other.sheets[0].rows.splice(1, 0, Object.assign(Model.emptyRow(other.sheets[0].columns), { '.kind': 'p', text: 'Anna added this.' }));
+  gsSave(ss, other, base);
+  const mine = gsCopy(opened);
+  mine.sheets[0].rows[0].text = 'Why rows (revised)';
+  mine.sheets[0].rows[2].text = 'My version of the sentence.';
+  mine.sheets[1].rows.push(Model.emptyRow(mine.sheets[1].columns)); // the row being typed into: not written, not lost
+  const r = gsSave(ss, mine, base);
+  const back = gsRead(ss);
+  eq(back.sheets[0].rows.slice(0, 4).map(x => x.text), ['Why rows (revised)', 'Anna added this.', 'First argument with **bold**.', 'My version of the sentence.']);
+  eq(back.sheets[0].rows[2].notes, 'checked by Anna', 'their cell in a row I changed elsewhere');
+  eq(r.conflicts.length, 1); eq(r.conflicts[0].column, 'text'); eq(r.conflicts[0].theirs, 'Anna rewrote this sentence.');
+  eq(r.doc.sheets[1].rows.length, 3, 'the empty row stays in the editor'); eq(back.sheets[1].rows.length, 2, 'but is not written');
+  const again = gsSave(ss, gsCopy(r.doc), r.base);
+  eq(again.conflicts, []); eq(again.doc.sheets[1].rows.length, 3, 'and survives the next save');
+});
+test('gsheets: deletions on either side; a row deleted here but changed there comes back; old rows are cleared', () => {
+  const { ss } = gsNew(sampleDoc());
+  const opened = gsRead(ss), base = GSheets.writtenCopy(opened);
+  const other = gsRead(ss);
+  other.sheets[0].rows.splice(4, 1); // Anna deletes "Ääkköset"
+  other.sheets[0].rows[3].notes = 'Anna: keep this'; // and annotates "Parked idea"
+  gsSave(ss, other, base);
+  const mine = gsCopy(opened);
+  mine.sheets[0].rows.splice(3, 1); // I delete "Parked idea"
+  const r = gsSave(ss, mine, base);
+  const t = gsRead(ss).sheets[0].rows.map(x => x.text);
+  ok(!t.includes('Ääkköset ja ö toimivat.'), 'their deletion of a row I did not touch stands');
+  ok(t.includes('Parked idea'), 'a row I deleted but they changed is kept');
+  eq(r.conflicts.length, 1);
+  eq(FakeSheets.shown(ss.sheets[0]).length, 1 + t.length, 'no leftover rows below the content');
+});
+test('gsheets: tabs renamed, swapped, deleted and re-created under an old name without name collisions', () => {
+  const doc = sampleDoc(); doc.sheets.push(gsChapter('Third', ['third'])); Model.ensureIds(doc);
+  const { ss } = gsNew(doc);
+  const opened = gsRead(ss), base = GSheets.writtenCopy(opened);
+  const mine = gsCopy(opened);
+  mine.sheets[0].name = 'Body'; mine.sheets[1].name = 'Intro';
+  mine.sheets.splice(2, 1);
+  mine.sheets.push(gsChapter('Third', ['a new third'])); Model.ensureIds(mine);
+  gsSave(ss, mine, base);
+  eq(ss.sheets.map(s => s.title), ['Body', 'Intro', 'Third', '.sheetwriter']);
+  eq(gsTexts(gsRead(ss))[2], 'Third: a new third');
+});
+test('gsheets: a tab and a setting someone else added are kept; data tabs are left alone', () => {
+  const { ss } = gsNew(sampleDoc());
+  ss.sheets.splice(2, 0, { id: 99, title: 'Data', rowCount: 10, columnCount: 3, frozenRows: 0, frozenCols: 0, hidden: [], cells: [['a', 'b'], ['1', '2']] });
+  const opened = gsRead(ss), base = GSheets.writtenCopy(opened);
+  const other = gsRead(ss); other.settings.author = 'Anna'; other.sheets.splice(2, 0, gsChapter('Annex', ['annex text'])); Model.ensureIds(other);
+  gsSave(ss, other, base);
+  const mine = gsCopy(opened); mine.sheets[1].rows[1].text = 'Under it, edited.';
+  gsSave(ss, mine, base);
+  const back = gsRead(ss);
+  eq(back.sheets.map(s => s.name), ['Intro', 'Body', 'Annex', 'Data']);
+  eq(back.settings.author, 'Anna'); eq(back.sheets[1].rows[1].text, 'Under it, edited.');
+  eq(FakeSheets.shown(ss.sheets.find(s => s.title === 'Data')), [['a', 'b'], ['1', '2']]);
 });
 
 // ---- xlsx ----
