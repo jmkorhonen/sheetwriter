@@ -4,6 +4,7 @@
   "description": "A text editor whose document is an Excel workbook. Single HTML file; this package only runs the browser tests headlessly.",
   "scripts": {
     "test": "node tests/run.js",
+    "test:google": "node tests/google-e2e.js",
     "build": "python build.py"
   },
   "devDependencies": {

@@ -21,6 +21,8 @@ jobs:
         run: node tests/run.js --browser=firefox
       - name: Browser tests (headless WebKit)
         run: node tests/run.js --browser=webkit
+      - name: Google Sheets flow in the app, against a fake Sheets API (headless Chromium)
+        run: node tests/google-e2e.js
       - name: Built file in docs/ matches the sources
         run: |
           python3 build.py

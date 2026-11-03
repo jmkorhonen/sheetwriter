@@ -13,7 +13,7 @@
     doc: Model.ensureIds(Model.newDoc()), si: 0, view: 'draft', showSide: true,
     fileHandle: null, fileName: 'untitled.xlsx', sources: new Map(), formats: new Map(), dirty: false,
     readScope: 'sheet', readNumbering: '', readColumn: null, readIndented: 'paragraphs',
-    focus: null, lastFocus: null, readPos: null, cursor: null,
+    focus: null, lastFocus: null, readPos: null, cursor: null, google: null, // google: {id, title, base} while the workbook is a Google Sheet
     fileMtime: null, savedAt: null, copyHandle: null, copyName: '', copyAt: null, copyNeedsPermission: false,
     collapsed: new Set(), editColumn: null, editSheet: null,
     sel: new Set(), selAnchor: null, clipboard: null, // row selection (ids, current sheet) and the internal row clipboard
@@ -464,7 +464,7 @@
     const tgt = doc.settings.wordTarget || 0, unit = Model.targetUnit(doc);
     const of = u => tgt && unit === u ? ` / ${fmt(tgt)}` : '', pct = u => tgt && unit === u ? ` (${Math.round(100 * d[u] / tgt)} %)` : '';
     parts.push(`Workbook: ${fmt(d.rows)} rows, ${fmt(d.words)}${of('words')} words${pct('words')}, ${fmt(d.chars)}${of('chars')} chars${pct('chars')}`);
-    parts.push(hasFS ? 'direct file access' : 'download mode');
+    parts.push(state.google ? 'Google Sheets' : hasFS ? 'direct file access' : 'download mode');
     if (state.copyHandle && prefs.autosaveCopy.enabled) {
       const p = n => String(n).padStart(2, '0');
       const at = state.copyAt ? new Date(state.copyAt) : null;
@@ -1410,6 +1410,7 @@
     state.si = doc.sheets.findIndex(s => s.kind === 'chapter'); if (state.si < 0) state.si = 0;
     state.dirty = false; state.lastFocus = null; state.readPos = null; state.collapsed.clear(); state.editColumn = null; state.editSheet = null;
     state.sel.clear(); state.selAnchor = null;
+    state.google = null;
     state.fileMtime = null; state.savedAt = null; state.copyHandle = null; state.copyName = ''; state.copyAt = null; state.copyNeedsPermission = false;
     closeFind();
     history.undo.length = 0; history.redo.length = 0; typingKey = null;
@@ -1423,6 +1424,7 @@
     return (t || 'untitled') + '.xlsx';
   }
   async function saveFile(as) {
+    if (state.google && !as) return googleSave();
     state.doc.settings.view = currentViewState(); // display state travels with the file; not an undo step
     let blob;
     const build = async () => { try { blob = (await buildWorkbook(state.doc, state.fileName)).blob; return true; } catch (e) { console.error(e); alert('Could not build the workbook: ' + (e.message || e)); return false; } };
@@ -1457,7 +1459,7 @@
         }
         download(blob, state.fileName);
       }
-      state.dirty = false; state.savedAt = Date.now();
+      state.dirty = false; state.savedAt = Date.now(); state.google = null; // saved as a file: that file is the workbook now
       idb.del('autosave').catch(() => {});
       renderStatus(); // nothing in the view changes on save; a full render would lose the scroll position
     } catch (e) {
@@ -1560,12 +1562,14 @@
     try { list = (await idb.get('recents')) || []; } catch (e) { /* ignore */ }
     const recover = { label: 'Recover an autosave…', action: () => recoverMenu(anchor) };
     const snaps = { label: 'Snapshots and compare…', action: openSnapshots };
-    if (!hasFS) { showMenu(anchor, [{ label: 'Recent files need Edge or Chrome (direct file access).', disabled: true, action() {} }, '-', recover, snaps]); return; }
+    const item = r => ({ label: r.gsheet ? r.name + ' (Google Sheets)' : r.name, title: new Date(r.at).toLocaleString(), action: () => (r.gsheet ? googleOpen(r.gsheet) : openRecent(r)) });
+    if (!hasFS) {
+      const gl = list.filter(r => r.gsheet);
+      showMenu(anchor, gl.map(item).concat(gl.length ? ['-'] : [], [{ label: 'Recent files need Edge or Chrome (direct file access).', disabled: true, action() {} }], state.google ? ['-', ...linkItems()] : [], ['-', recover, snaps]));
+      return;
+    }
     if (!list.length) { showMenu(anchor, [{ label: 'No recent files yet. Files you open or save appear here.', disabled: true, action() {} }, '-', recover, snaps]); return; }
-    showMenu(anchor, list.map(r => ({
-      label: r.name, title: new Date(r.at).toLocaleString(),
-      action: () => openRecent(r),
-    })).concat(['-', ...linkItems(), '-', recover, snaps, { label: 'Clear list', action: () => idb.del('recents').catch(() => {}) }]));
+    showMenu(anchor, list.map(item).concat(['-', ...linkItems(), '-', recover, snaps, { label: 'Clear list', action: () => idb.del('recents').catch(() => {}) }]));
   }
   /** Open a Recent entry, asking for file access again if the browser has dropped it (needs a click to have happened). */
   async function openRecent(r) {
@@ -1591,7 +1595,7 @@
   let pendingLink = null;
   function linkBase() { return location.href.split(/[?#]/)[0]; }
   function workbookLink(rowId) {
-    const q = new URLSearchParams({ open: state.fileName, wb: state.doc.settings.id || '' });
+    const q = state.google ? new URLSearchParams({ gsheet: state.google.id }) : new URLSearchParams({ open: state.fileName, wb: state.doc.settings.id || '' });
     if (rowId) q.set('row', rowId);
     return linkBase() + '?' + q.toString();
   }
@@ -1607,8 +1611,8 @@
     catch (e) { await askText(what + ' (copy it from here)', text); }
   }
   function linkItems() {
-    if (!hasFS) return [{ label: 'Links to a workbook need Edge or Chrome (direct file access).', disabled: true, action() {} }];
-    if (!state.fileHandle) return [{ label: 'Save or open a file to copy a link to it.', disabled: true, action() {} }];
+    if (!state.google && !hasFS) return [{ label: 'Links to a workbook need Edge or Chrome (direct file access).', disabled: true, action() {} }];
+    if (!state.google && !state.fileHandle) return [{ label: 'Save or open a file to copy a link to it.', disabled: true, action() {} }];
     const title = docTitle(), r = linkRow();
     const items = [
       { label: 'Copy link to this workbook', title: 'A web link that opens this file in SheetWriter from this browser\'s Recent list; paste it into Obsidian or any notes app', action: () => copyText(workbookLink(), 'Link') },
@@ -1634,9 +1638,9 @@
     flashStatus('The linked row is no longer in this workbook.');
   }
   async function openFromLink() {
-    const q = new URLSearchParams(location.search), name = q.get('open');
-    if (!name) return;
-    const link = { name, wb: q.get('wb') || '', row: q.get('row') || '' };
+    const q = new URLSearchParams(location.search), name = q.get('open'), gsheet = q.get('gsheet');
+    if (!name && !gsheet) return;
+    const link = { name: name || '', wb: q.get('wb') || '', row: q.get('row') || '' };
     try { window.history.replaceState(null, '', linkBase() + location.hash); } catch (e) { /* file:// in some browsers */ } // (history here is the undo stack)
     const dlg = $('#dlg-link'), go = $('#link-open');
     const ask = (msg, label, action) => {
@@ -1644,9 +1648,16 @@
       go.onclick = async () => { dlg.close(); await action(); };
       dlg.showModal(); go.focus();
     };
+    if (gsheet) { // signing in to Google opens a pop-up, which needs a click
+      if (!GSheets.available()) { ask('This link opens a Google Sheet. ' + GSheets.unavailableReason(), 'OK', async () => {}); return; }
+      GSheets.preload();
+      ask(`Open the linked Google Sheet${link.row ? ' at the linked row' : ''}?`, 'Open from Google Sheets', () => googleOpen(gsheet, link));
+      return;
+    }
     if (!hasFS) { ask(`This link opens “${name}”, but links to files work only in Edge and Chrome, which can reopen files. Open it by hand here?`, 'Open a file…', async () => { pendingLink = link; openFile(); }); return; }
     let list = [];
     try { list = (await idb.get('recents')) || []; } catch (e) { /* ignore */ }
+    list = list.filter(r => r.handle);
     const byId = link.wb ? list.filter(r => r.id === link.wb) : [];
     const r = byId.find(x => x.name === name) || byId[0] || list.find(x => x.name === name);
     if (!r) {
@@ -1660,6 +1671,116 @@
     // The browser asks for file access again after a restart; that request needs a click.
     ask(`Open “${r.name}”${link.row ? ' at the linked row' : ''}?`, 'Open ' + r.name, open);
   }
+
+  // ---------- Google Sheets (online version; see gsheets.js) ----------
+  function googleError(what, e) {
+    console.error(e);
+    if (e && e.cancelled) { flashStatus('Google sign-in was closed.'); return; }
+    alert(`Could not ${what} the Google Sheet: ${(e && e.message) || e}`);
+  }
+  async function addRecentGoogle(id, name) {
+    try {
+      const list = ((await idb.get('recents')) || []).filter(r => r.gsheet !== id);
+      list.unshift({ name, gsheet: id, at: Date.now() });
+      await idb.set('recents', list.slice(0, RECENT_MAX));
+    } catch (e) { /* no IndexedDB */ }
+  }
+  /** Open a spreadsheet: chosen in Google's picker, or by id (Recent, a link). A sheet this person has not opened with
+   *  SheetWriter before is not visible to it yet, so the picker is shown with that sheet for them to confirm. */
+  async function googleOpen(id, link) {
+    if (!GSheets.available()) { alert(GSheets.unavailableReason()); return; }
+    if (!confirmDiscard()) return;
+    try {
+      if (!id && !(id = await GSheets.pick())) return;
+      flashStatus('Opening from Google Sheets…');
+      let r;
+      try { r = await GSheets.open(id); } catch (e) {
+        if (e.status !== 404 && e.status !== 403) throw e;
+        if (!(id = await GSheets.pick(id))) { renderStatus(); return; }
+        r = await GSheets.open(id);
+      }
+      if (!r.hasSettings && !r.doc.settings.title) r.doc.settings.title = r.title;
+      loadDoc(r.doc, r.title, null, new Map());
+      state.google = { id, title: r.title, base: r.base };
+      state.savedAt = Date.now(); clearTimeout(flashTimer); flashTimer = null; renderStatus();
+      addRecentGoogle(id, r.title);
+      if (r.warnings.length) alert(r.warnings.join('\n'));
+      if (link) followLink(link, r.title);
+    } catch (e) { renderStatus(); googleError('open', e); }
+  }
+  let googleBusy = false;
+  /** Save: read the spreadsheet again, merge what others changed since this copy was read, write. Typing during the
+   *  save is kept: the editor's newer state is merged once more with the saved one. */
+  async function googleSave() {
+    const g = state.google;
+    if (!g || googleBusy) return;
+    googleBusy = true;
+    try {
+      state.doc.settings.view = currentViewState();
+      Model.ensureRowIds(state.doc); GSheets.prepare(state.doc); // ids shared by every copy taken from here on
+      const mine = snapshot();
+      flashStatus('Saving to Google Sheets…');
+      const r = await GSheets.save(g.id, JSON.parse(mine), g.base);
+      if (state.google !== g) return; // another workbook was opened meanwhile
+      g.base = r.base;
+      const now = snapshot(), typed = now !== mine;
+      let doc = r.doc, conflicts = r.conflicts;
+      if (typed) { const m = GSheets.merge(JSON.parse(mine), JSON.parse(now), r.doc); doc = m.doc; conflicts = conflicts.concat(m.conflicts); }
+      const changed = JSON.stringify(doc) !== now;
+      if (changed) { state.doc = doc; clampSi(); }
+      state.dirty = typed; state.savedAt = Date.now();
+      if (!typed) idb.del('autosave').catch(() => {});
+      clearTimeout(flashTimer); flashTimer = null;
+      if (changed) { state.focus = state.lastFocus; render(); } else renderStatus();
+      addRecentGoogle(g.id, g.title);
+      if (conflicts.length) showConflicts(conflicts);
+    } catch (e) { renderStatus(); googleError('save', e); }
+    finally { googleBusy = false; }
+  }
+  async function googleSaveNew() {
+    if (!GSheets.available()) { alert(GSheets.unavailableReason()); return; }
+    const title = await askText('Name of the new Google Sheet', docTitle());
+    if (title == null || !title.trim()) return;
+    try {
+      state.doc.settings.view = currentViewState();
+      Model.ensureRowIds(state.doc);
+      for (const s of state.doc.sheets) delete s._gid; // a new spreadsheet: every tab is new
+      GSheets.prepare(state.doc);
+      const mine = snapshot();
+      flashStatus('Creating a Google Sheet…');
+      const r = await GSheets.saveNew(title.trim(), JSON.parse(mine));
+      state.google = { id: r.id, title: title.trim(), base: r.base };
+      state.fileName = title.trim(); state.fileHandle = null; state.fileMtime = null;
+      state.dirty = snapshot() !== mine; state.savedAt = Date.now();
+      clearTimeout(flashTimer); flashTimer = null; renderStatus();
+      addRecentGoogle(r.id, title.trim());
+    } catch (e) { renderStatus(); googleError('create', e); }
+  }
+  function showConflicts(list) {
+    const where = c => {
+      const si = state.doc.sheets.findIndex(s => s.name === c.sheet), s = state.doc.sheets[si];
+      const i = s && s.kind === 'chapter' && c.id ? s.rows.findIndex(r => r[Model.IDENT] === c.id) : -1;
+      return c.sheet + (i >= 0 ? ' ' + Model.numbering(state.doc, si).numbers[i] : '');
+    };
+    $('#cf-intro').textContent = `${list.length} of your changes overlapped with changes someone else made since you opened the sheet. Your version was saved; theirs is listed here so you can copy back what you need.`;
+    $('#cf-list').value = list.map(c => c.column ? `${where(c)}, ${c.column}: they wrote “${c.theirs}”` : `${where(c)} ${c.id ? 'row ' : 'tab '}${c.text}`).join('\n\n');
+    $('#dlg-conflicts').showModal();
+  }
+  function googleMenu(anchor) {
+    if (!GSheets.available()) { showMenu(anchor, [{ label: GSheets.unavailableReason(), disabled: true, action() {} }]); return; }
+    GSheets.preload();
+    const g = state.google;
+    const items = [
+      { label: 'Open a Google Sheet…', action: () => googleOpen() },
+      { label: g ? 'Save a copy as a new Google Sheet…' : 'Save as a new Google Sheet…', action: googleSaveNew },
+    ];
+    if (g) items.push('-', { heading: g.title },
+      { label: 'Save, keeping others\' changes (Ctrl+S)', action: googleSave },
+      { label: 'Open in Google Sheets ↗', action: () => window.open(GSheets.url(g.id), '_blank', 'noopener') });
+    items.push('-', { label: 'Sign out of Google', disabled: !GSheets.signedIn(), action: () => { GSheets.signOut(); flashStatus('Signed out of Google.'); } });
+    showMenu(anchor, items);
+  }
+  $('#btn-google').onclick = e => googleMenu(e.currentTarget);
 
   // ---------- snapshots and compare ----------
   const dlgSnap = $('#dlg-snap'), dlgCompare = $('#dlg-compare');
@@ -2095,7 +2216,7 @@
     const snap = snapshot();
     if (snap === lastAutosave) return;
     lastAutosave = snap;
-    idb.set('autosave', { doc: state.doc, fileName: state.fileName, at: Date.now() }).catch(() => {});
+    idb.set('autosave', { doc: state.doc, fileName: state.fileName, google: state.google, at: Date.now() }).catch(() => {}); // google: restored work still saves to its sheet
     // Keep a short history of snapshots (one every 5 minutes, six kept) for "Recover an autosave…".
     if (Date.now() - lastHistoryAt > 5 * 60000) {
       lastHistoryAt = Date.now();
@@ -2118,6 +2239,7 @@
       const when = new Date(a.at).toLocaleString();
       if (confirm(`Unsaved work from ${when} (${a.fileName}) was found. Restore it?`)) {
         loadDoc(a.doc, a.fileName, null, new Map());
+        if (a.google && a.google.id) state.google = a.google;
         state.dirty = true; render();
       } else {
         await idb.del('autosave');

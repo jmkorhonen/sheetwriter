@@ -2,6 +2,9 @@
 
 One line per release; the commit under each tag has the details. Dates are the day the tag was pushed.
 
+## 0.25.0 (2026-11-03)
+Google Sheets (online version): Google ▾ opens a Google Sheet or saves the workbook as a new one. Saving merges by row id, so several people can work on one sheet: what others changed since you opened it is kept, the same cell changed on both sides keeps your text and lists theirs. Recent ▾ and `?gsheet=` links include Google Sheets. Tests against a fake Sheets API, also in CI.
+
 ## 0.24.0 (2026-10-07)
 Settings → Editor: text size and fonts (one for the text column, one for the other columns; common fonts only, shown in this browser only). Columns ▾ lists only what the current view shows: in Draft the side columns and, apart, "Counts and last edit", which now also covers the last-edit line, so cards without it are only as tall as their text and side fields; in Grid the table's columns. ◨ Side sits before Columns ▾; Read view drops Columns, Filter, Collapse all and Expand all. Saving only editor preferences no longer marks the workbook changed.
 

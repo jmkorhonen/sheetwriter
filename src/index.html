@@ -14,6 +14,7 @@
     <button id="btn-new" title="New workbook">New</button>
     <button id="btn-open" title="Open an .xlsx or .ods workbook (Ctrl+O)">Open</button>
     <button id="btn-recent" title="Recently opened or saved files">Recent ▾</button>
+    <button id="btn-google" title="Open or save a Google Sheet (online version)">Google ▾</button>
     <button id="btn-save" title="Save (Ctrl+S)">Save</button>
     <button id="btn-saveas" title="Save as… (Ctrl+Shift+S)">Save as</button>
   </div>
@@ -213,6 +214,15 @@
   </form>
 </dialog>
 
+<dialog id="dlg-conflicts">
+  <form method="dialog" class="dlg">
+    <h2>Saved, with overlapping changes</h2>
+    <p id="cf-intro"></p>
+    <textarea id="cf-list" readonly rows="10" style="width:100%;font:inherit;font-size:13px"></textarea>
+    <div class="actions"><button type="button" data-close class="primary">OK</button></div>
+  </form>
+</dialog>
+
 <dialog id="dlg-link">
   <form method="dialog" class="dlg">
     <h2>Open from a link</h2>
@@ -297,6 +307,8 @@
     <p>Settings → Columns chooses which of your columns the app treats specially, whatever their names: the main text column (★) and a status column (●) whose values show as coloured chips under each card and tint the Grid cell. Settings → Counts and targets chooses the columns whose words and characters are counted, a target column (◎) whose number on a heading row sets a target for that section, shown against the section count on the card and in the contents pane, and a target for the whole workbook, shown in the status bar. Targets count words or characters, as chosen there. The Filter button (Draft and Grid) hides rows that do not match: plain text, or <code>column:value</code> such as <code>status:todo</code>, <code>kind:h2</code> or <code>no:2.1</code>. Pasting rich text from Word or a browser into the import dialog converts it to Markdown.</p>
     <h3>Grid, columns and tabs</h3>
     <p>Columns ▾ lists what the current view shows. In Draft: the side columns beside the text (the ◨ Side button shows or hides them all) and, separately, the counts and last edit under each row; with those off, a card is only as tall as its text and side fields. In Grid: the table's columns. Read view does without the Columns, Filter, Collapse all and Expand all buttons. Columns are shared by all chapter sheets: adding, renaming, deleting or reordering a column applies everywhere, and deleting warns if any sheet holds data in it. Click a column name to rename it, drag a column header to reorder, drag its right edge to resize. The – button hides a column in Grid view; Columns ▾ brings it back. Rows hide in Grid by collapsing (▾ in the number cell, Collapse all) or by typing in the filter box above the table. Double-click a sheet tab to rename it. Drag rows by the ⋮⋮ handle, drag tabs to reorder chapters. Click the title in the toolbar to change it.</p>
+    <h3>Google Sheets</h3>
+    <p>In the online version, Google ▾ opens a Google Sheet, chosen in Google's file picker, or saves the workbook as a new one; sign in with Google when asked. SheetWriter can see only the sheets you open or create with it. Save (Ctrl+S) then writes to the sheet, with the same tabs and columns as an .xlsx. Several people can work on one sheet: before writing, SheetWriter reads it again and keeps what others changed since you opened it (other rows and cells, rows and tabs they added or deleted), including edits made directly in Google Sheets. Their changes appear in your editor when you save. If someone else changed the same cell as you, your version is saved and theirs is listed so you can copy it back. Recent ▾ lists the Google Sheets you used, and its links open a sheet for anyone who has access to it. The downloaded copy of SheetWriter cannot sign in to Google.</p>
     <h3>Files</h3>
     <p>Saving checks whether the file changed on disk since it was opened (edited in Excel, say) and asks before overwriting. An autosave snapshot is kept in the browser every 5 minutes (Recent ▾ → Recover an autosave…), and Settings can add an autosave copy written to a second workbook, such as <code>name_AUTOSAVE.xlsx</code>, at an interval of your choice. Excel hyperlinks are read as Markdown links. In Read view, click any paragraph or heading to edit it.</p>
     <p>Recent ▾ → Snapshots and compare… keeps named copies of the workbook in this browser and compares the editor with a snapshot, with the saved file, or with another workbook: rows added, removed or changed, with word-level differences, grouped by sheet. Click a row in the list to go to it.</p>
@@ -326,6 +338,7 @@
 <script src="importer.js"></script>
 <script src="html2md.js"></script>
 <script src="xlsxio.js"></script>
+<script src="gsheets.js"></script>
 <script src="views.js"></script>
 <script src="app.js"></script>
 </body>
